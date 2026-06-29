@@ -8,11 +8,11 @@ Project này không phải FastAPI server và không chứa logic runtime của 
 
 1. Đọc `Ingredient`, `Additive`, `Nutrient` và các quan hệ liên quan từ Source Neo4j.
 2. Tạo semantic context từ dữ liệu đã extract.
-3. Gửi context cho AI để diễn giải thành `WikiSection` tự nhiên, dễ hiểu cho người dùng app.
+3. Gửi context cho Gemini API để diễn giải thành `WikiSection` tự nhiên, dễ hiểu cho người dùng app.
 4. Validate JSON review.
 5. Import `Ingredient`, `Additive`, `Nutrient`, `WikiProfile`, `WikiSection` vào Target Neo4j bằng `MERGE`.
 
-AI chỉ được dùng dữ liệu lấy từ Source Neo4j trong payload truyền vào. Prompt yêu cầu không tự thêm kiến thức ngoài, không kết luận an toàn/nguy hiểm tuyệt đối, và không dùng các cụm mang tính hệ thống như `graph`, `node`, `relationship`, `hồ sơ`, `dữ liệu hiện liên kết`, `được ghi nhận trong ViFood-KC`.
+Gemini chỉ được dùng dữ liệu lấy từ Source Neo4j trong payload truyền vào. Prompt yêu cầu không tự thêm kiến thức ngoài, không kết luận an toàn/nguy hiểm tuyệt đối, và không dùng các cụm mang tính hệ thống như `graph`, `node`, `relationship`, `hồ sơ`, `dữ liệu hiện liên kết`, `được ghi nhận trong ViFood-KC`.
 
 ## Cấu Hình
 
@@ -40,9 +40,9 @@ TARGET_NEO4J_USER=neo4j
 TARGET_NEO4J_PASSWORD=change_me
 TARGET_NEO4J_DATABASE=neo4j
 
-# AI section generation.
-OPENAI_API_KEY=sk-...
-OPENAI_MODEL=gpt-4.1-mini
+# Gemini section generation.
+GEMINI_API_KEY=...
+GEMINI_MODEL=gemini-2.5-flash
 ```
 
 CLI sẽ dừng nếu Source và Target trỏ cùng URI/user/database để tránh ghi ngược vào Source.
@@ -57,7 +57,7 @@ python -m src.main extract --type ingredient
 python -m src.main extract --type nutrient
 ```
 
-Build JSON review bằng AI, chưa import:
+Build JSON review bằng Gemini, chưa import:
 
 ```bash
 python -m src.main build --type additive --limit 10
@@ -114,7 +114,7 @@ Mỗi item có dạng:
 }
 ```
 
-AI output chỉ nhận các `section_type` sau:
+Gemini output chỉ nhận các `section_type` sau:
 
 - `overview`
 - `role_and_usage`
@@ -133,7 +133,7 @@ Import chỉ thêm hoặc cập nhật các node/wiki phục vụ app:
 (:WikiProfile)-[:HAS_SECTION {order}]->(:WikiSection)
 ```
 
-Loader dùng `MERGE`, không xóa dữ liệu cũ và không tạo thêm các node quan hệ ngoài luồng như `Source`, `Regulation`, `FoodCategory`. `WikiProfile` và `WikiSection` có `source_hash`; khi dữ liệu nguồn không đổi, batch có thể dùng lại section đã có trên Target thay vì gọi AI lại.
+Loader dùng `MERGE`, không xóa dữ liệu cũ và không tạo thêm các node quan hệ ngoài luồng như `Source`, `Regulation`, `FoodCategory`. `WikiProfile` và `WikiSection` có `source_hash`; khi dữ liệu nguồn không đổi, batch có thể dùng lại section đã có trên Target thay vì gọi Gemini lại.
 
 ## Kiểm Tra
 

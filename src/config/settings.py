@@ -58,7 +58,7 @@ def load_settings(env_file: str | None = None) -> AppSettings:
             regulation=os.getenv("REGULATION_LABEL", "Regulation"),
         ),
         ai=AISettings(
-            api_key=os.getenv("OPENAI_API_KEY", ""),
-            model=os.getenv("OPENAI_MODEL", "gpt-4.1-mini"),
+            api_key=os.getenv("GEMINI_API_KEY", ""),
+            model=os.getenv("GEMINI_MODEL", "gemini-2.5-flash"),
         ),
     )

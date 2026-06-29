@@ -48,7 +48,7 @@ SET section.title = sectionData.title,
     section.status = sectionData.status,
     section.order = sectionData.order,
     section.source_hash = item.source_hash,
-    section.generated_by = coalesce(sectionData.generated_by, 'ai')
+    section.generated_by = coalesce(sectionData.generated_by, 'gemini')
 MERGE (profile)-[:HAS_SECTION {order: sectionData.order}]->(section)
 """
 
