@@ -38,6 +38,8 @@ class WikiValidator:
         errors: list[str] = []
         errors.extend(self.required.validate(item))
         errors.extend(self.source.validate(item))
+        if not item.get("source_hash"):
+            errors.append(f"{entity_id}: source_hash is required.")
 
         entity_type = item.get("entity_type")
         facts = {fact.get("label"): fact.get("value") for fact in item.get("facts") or []}

@@ -8,7 +8,8 @@ from src.config.settings import AppSettings, Neo4jSettings, load_settings
 from src.db.neo4j_connection import SourceNeo4jConnection, TargetNeo4jConnection
 from src.extract import AdditiveExtractor, IngredientExtractor, NutrientExtractor
 from src.load.neo4j_loader import Neo4jLoader
-from src.transform import SemanticContextBuilder, WikiProfileGenerator, WikiSectionGenerator
+from src.transform import AISectionGenerator, SemanticContextBuilder, WikiProfileGenerator
+from src.transform.source_hash import compute_source_hash
 from src.validate.wiki_validator import ValidationError, WikiValidator
 
 
@@ -35,6 +36,17 @@ def main() -> None:
     build_parser.add_argument("--output", default=None)
     build_parser.add_argument("--env-file", default=None)
 
+    batch_parser = subparsers.add_parser(
+        "batch",
+        help="Extract from source, generate AI wiki sections, validate, and optionally import to target.",
+    )
+    batch_parser.add_argument("--entity-type", "--type", dest="entity_type", required=True, choices=(*ENTITY_TYPES, "all"))
+    batch_parser.add_argument("--limit", type=int, default=None)
+    batch_parser.add_argument("--output", default=None)
+    batch_parser.add_argument("--env-file", default=None)
+    batch_parser.add_argument("--dry-run", action="store_true", help="Write review JSON and validate, but do not import.")
+    batch_parser.add_argument("--force", action="store_true", help="Regenerate sections even when target cache matches source_hash.")
+
     validate_parser = subparsers.add_parser("validate", help="Validate review JSON before import.")
     validate_parser.add_argument("--file", required=True)
 
@@ -48,12 +60,16 @@ def main() -> None:
             _extract(args)
         elif args.command == "build":
             _build(args)
+        elif args.command == "batch":
+            _batch(args)
         elif args.command == "validate":
             _validate(args)
         elif args.command == "import":
             _import(args)
     except ValidationError as exc:
         raise SystemExit(f"Validation failed:\n{exc}") from exc
+    except ValueError as exc:
+        raise SystemExit(f"Pipeline failed: {exc}") from exc
 
 
 def _extract(args: argparse.Namespace) -> None:
@@ -82,29 +98,45 @@ def _build(args: argparse.Namespace) -> None:
     finally:
         source.close()
 
-    items = []
-    for entity_type, raw_item in raw_items:
-        context = SemanticContextBuilder().build(raw_item, entity_type)
-        wiki_sections = WikiSectionGenerator().generate(context)
-        if not wiki_sections:
-            continue
-        item = {
-            "entity_id": context["entity_id"],
-            "entity_type": context["entity_type"],
-            "source_entity": raw_item.get("entity") or {},
-            "wiki_profile": WikiProfileGenerator().generate(context),
-            "wiki_sections": wiki_sections,
-            "facts": context["facts"],
-            "related": context["related"],
-            "evidence": context["evidence"],
-        }
-        items.append(item)
+    items = _build_items(raw_items, settings)
 
     output_type = args.type
     output = Path(args.output) if args.output else OUTPUT_DIR / f"wiki_{output_type}.json"
     _write_json(output, _payload("build", output_type, items))
     print(f"Wrote review JSON: {output}")
     print(f"Items: {len(items)}")
+
+
+def _batch(args: argparse.Namespace) -> None:
+    settings = load_settings(args.env_file)
+    _assert_separate_neo4j(settings)
+
+    source = SourceNeo4jConnection(settings.source_neo4j)
+    target = TargetNeo4jConnection(settings.target_neo4j)
+    try:
+        raw_items = _extract_raw(source, args.entity_type, args.limit)
+        loader = Neo4jLoader(target)
+        items = _build_items(raw_items, settings, loader if not args.force else None)
+        output_type = args.entity_type
+        output = Path(args.output) if args.output else OUTPUT_DIR / f"wiki_{output_type}.json"
+        payload = _payload("batch", output_type, items)
+        _write_json(output, payload)
+
+        errors = WikiValidator().validate_payload(payload)
+        if errors:
+            raise ValidationError("\n".join(errors))
+
+        print(f"Wrote review JSON: {output}")
+        print(f"Items: {len(items)}")
+        if args.dry_run:
+            print("Dry-run: skipped import into target ViFood-KG.")
+            return
+
+        result = loader.import_payload(payload)
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+    finally:
+        source.close()
+        target.close()
 
 
 def _validate(args: argparse.Namespace) -> None:
@@ -141,6 +173,53 @@ def _extract_raw(
         for item in extractors[selected_type].get_all(limit):
             raw_items.append((selected_type, item))
     return raw_items
+
+
+def _build_items(
+    raw_items: list[tuple[str, dict[str, Any]]],
+    settings: AppSettings,
+    target_loader: Neo4jLoader | None = None,
+) -> list[dict[str, Any]]:
+    context_builder = SemanticContextBuilder()
+    profile_generator = WikiProfileGenerator()
+    section_generator: AISectionGenerator | None = None
+    items: list[dict[str, Any]] = []
+
+    for entity_type, raw_item in raw_items:
+        context = context_builder.build(raw_item, entity_type)
+        source_hash = compute_source_hash(raw_item, entity_type)
+        profile_id = f"WIKI:{context['entity_id']}"
+
+        cached = target_loader.get_cached_wiki(profile_id, source_hash) if target_loader else None
+        if cached:
+            wiki_profile = cached["wiki_profile"]
+            wiki_sections = cached["wiki_sections"]
+            ai_status = "cached"
+        else:
+            if section_generator is None:
+                section_generator = AISectionGenerator(settings.ai)
+            wiki_profile = profile_generator.generate(context, source_hash)
+            wiki_sections = section_generator.generate(context, source_hash)
+            ai_status = "generated"
+
+        if not wiki_sections:
+            continue
+
+        items.append(
+            {
+                "entity_id": context["entity_id"],
+                "entity_type": context["entity_type"],
+                "source_hash": source_hash,
+                "source_entity": raw_item.get("entity") or {},
+                "wiki_profile": wiki_profile,
+                "wiki_sections": wiki_sections,
+                "facts": context["facts"],
+                "related": context["related"],
+                "evidence": context["evidence"],
+                "ai_status": ai_status,
+            }
+        )
+    return items
 
 
 def _assert_separate_neo4j(settings: AppSettings) -> None:

@@ -22,10 +22,17 @@ class GraphLabels:
 
 
 @dataclass(frozen=True)
+class AISettings:
+    api_key: str
+    model: str
+
+
+@dataclass(frozen=True)
 class AppSettings:
     source_neo4j: Neo4jSettings
     target_neo4j: Neo4jSettings
     labels: GraphLabels
+    ai: AISettings
 
 
 def load_settings(env_file: str | None = None) -> AppSettings:
@@ -49,5 +56,9 @@ def load_settings(env_file: str | None = None) -> AppSettings:
             nutrient=os.getenv("NUTRIENT_LABEL", "Nutrient"),
             source=os.getenv("SOURCE_LABEL", "Source"),
             regulation=os.getenv("REGULATION_LABEL", "Regulation"),
+        ),
+        ai=AISettings(
+            api_key=os.getenv("OPENAI_API_KEY", ""),
+            model=os.getenv("OPENAI_MODEL", "gpt-4.1-mini"),
         ),
     )

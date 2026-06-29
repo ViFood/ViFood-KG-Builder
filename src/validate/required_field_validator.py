@@ -2,8 +2,8 @@ from typing import Any
 
 
 class RequiredFieldValidator:
-    profile_fields = ("id", "title", "summary", "entity_type", "language", "status")
-    section_fields = ("id", "title", "content", "section_type", "status")
+    profile_fields = ("id", "title", "summary", "entity_type", "language", "status", "source_hash")
+    section_fields = ("id", "title", "content", "section_type", "status", "source_hash")
 
     def validate(self, item: dict[str, Any]) -> list[str]:
         entity_id = item.get("entity_id", "<missing entity_id>")
@@ -29,4 +29,12 @@ class RequiredFieldValidator:
                     errors.append(f"{prefix}.{field} is required.")
             if isinstance(section.get("content"), str) and not section["content"].strip():
                 errors.append(f"{prefix}.content must not be empty.")
+            if section.get("section_type") not in (
+                "overview",
+                "role_and_usage",
+                "common_foods",
+                "regulation",
+                "consumer_note",
+            ):
+                errors.append(f"{prefix}.section_type is not an allowed AI section type.")
         return errors

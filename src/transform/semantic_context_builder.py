@@ -56,26 +56,24 @@ class SemanticContextBuilder:
             "additive": "phụ gia thực phẩm",
             "nutrient": "chất dinh dưỡng",
         }.get(entity_type, "thực thể thực phẩm")
-        return f"{display_name} là một {type_text} được ghi nhận trong ViFood-KC."
+        return f"{display_name} là một {type_text} trong dữ liệu tham khảo của ViFood."
 
     @staticmethod
     def _facts(entity: dict[str, Any], entity_type: str) -> list[dict[str, str]]:
+        user_facing_fields = {
+            "ingredient": ("external_code", "chebi_id", "foodon_id"),
+            "additive": ("ins", "external_code"),
+            "nutrient": ("external_code", "default_unit"),
+        }
         field_labels = {
             "external_code": "Mã ngoài",
             "ins": "Mã INS",
             "default_unit": "Đơn vị mặc định",
             "chebi_id": "ChEBI",
             "foodon_id": "FoodOn",
-            "source": "Nguồn",
-            "reviewed_at": "Ngày rà soát",
         }
-        priority = {
-            "ingredient": ("external_code", "chebi_id", "foodon_id", "reviewed_at"),
-            "additive": ("ins", "external_code", "reviewed_at"),
-            "nutrient": ("external_code", "default_unit", "reviewed_at"),
-        }.get(entity_type, ())
         facts = []
-        for key in priority:
+        for key in user_facing_fields.get(entity_type, ()):
             value = entity.get(key)
             if value not in (None, ""):
                 facts.append({"label": field_labels.get(key, key), "value": str(value)})
