@@ -17,7 +17,11 @@ def _json_safe(value: Any) -> Any:
     if isinstance(value, dict):
         return {str(key): _json_safe(item) for key, item in value.items()}
     if isinstance(value, list):
-        return [_json_safe(item) for item in value]
+        normalized = [_json_safe(item) for item in value]
+        return sorted(
+            normalized,
+            key=lambda item: json.dumps(item, ensure_ascii=False, sort_keys=True, separators=(",", ":")),
+        )
     if isinstance(value, tuple):
         return [_json_safe(item) for item in value]
     if isinstance(value, (str, int, float, bool)) or value is None:

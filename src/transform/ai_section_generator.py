@@ -1,4 +1,5 @@
 import json
+import time
 from typing import Any
 
 from src.config.settings import AISettings
@@ -6,10 +7,10 @@ from src.config.settings import AISettings
 
 SECTION_TITLES = {
     "overview": "Tổng quan",
-    "role_and_usage": "Vai trò và cách dùng",
+    "classification_and_role": "Phân loại và vai trò",
     "common_foods": "Thường gặp trong thực phẩm",
-    "regulation": "Quy định và nguồn tham khảo",
-    "consumer_note": "Lưu ý cho người dùng",
+    "health_note": "Điều cần lưu ý cho sức khỏe",
+    "source_and_regulation": "Nguồn và quy định",
 }
 
 SECTION_ORDER = tuple(SECTION_TITLES)
@@ -42,14 +43,33 @@ class AISectionGenerator:
         from google.genai import types
 
         client = genai.Client(api_key=self.settings.api_key)
-        response = client.models.generate_content(
-            model=self.settings.model,
-            contents=self._prompt_text(payload),
-            config=types.GenerateContentConfig(
-                response_mime_type="application/json",
-                temperature=0.2,
-            ),
+        prompt = self._prompt_text(payload)
+        config = types.GenerateContentConfig(
+            response_mime_type="application/json",
+            temperature=0.2,
         )
+        last_error: Exception | None = None
+        for attempt in range(1, self.settings.max_retries + 1):
+            if self.settings.request_delay_seconds > 0:
+                time.sleep(self.settings.request_delay_seconds)
+            try:
+                response = client.models.generate_content(
+                    model=self.settings.model,
+                    contents=prompt,
+                    config=config,
+                )
+                break
+            except Exception as exc:
+                last_error = exc
+                if attempt >= self.settings.max_retries:
+                    raise ValueError(
+                        f"Gemini request failed after {self.settings.max_retries} attempts: {exc}"
+                    ) from exc
+                wait_seconds = self.settings.retry_base_seconds * attempt
+                time.sleep(wait_seconds)
+        else:
+            raise ValueError(f"Gemini request failed: {last_error}")
+
         content = response.text or "{}"
         try:
             parsed = json.loads(content)
@@ -70,17 +90,22 @@ class AISectionGenerator:
             "Chỉ viết thông tin có thể suy ra trực tiếp từ field trong JSON.\n"
             "Không tự suy đoán món ăn thường gặp, công dụng, mức độ an toàn, rủi ro hoặc quy định nếu JSON không có dữ liệu tương ứng.\n"
             "Không kết luận an toàn tuyệt đối hoặc nguy hiểm tuyệt đối.\n"
-            "Tách nội dung theo đúng mục đích từng section, không gom nhiều loại thông tin vào cùng một section và không lặp lại cùng một ý ở nhiều section.\n"
+            "Tách nội dung theo đúng mục đích từng section, không gom nhiều loại thông tin vào cùng một section và không lặp lại cùng một ý ở nhiều section.\n\n"
             "Quy tắc tách section:\n"
-            "- overview: chỉ giới thiệu ngắn entity là gì, tên, mã định danh chính. Không nêu chức năng, nhóm thực phẩm, quy định, nguồn hay lưu ý tiêu dùng.\n"
-            "- role_and_usage: chỉ nêu chức năng/vai trò/cách dùng khi JSON có related.functions hoặc field tương đương. Không nêu danh sách thực phẩm hay quy định.\n"
-            "- common_foods: chỉ nêu nhóm thực phẩm hoặc bối cảnh thực phẩm khi JSON có related.permitted_in hoặc field tương đương. Không nêu chức năng hay quy định.\n"
-            "- regulation: chỉ nêu văn bản, nguồn, quy định, ngày/số hiệu/trang nguồn khi JSON có sources, regulations hoặc evidence. Không nêu chức năng hay nhóm thực phẩm.\n"
-            "- consumer_note: chỉ nêu cách người dùng nên hiểu/đọc thông tin trên nhãn dựa trên dữ liệu đã có. Không thêm cảnh báo sức khỏe nếu JSON không có dữ liệu.\n"
+            "- overview: chỉ giải thích entity là gì, người dùng thường hiểu nó như thế nào, tên chuẩn, tên phụ, alias, mã INS/E-number hoặc mã định danh nếu JSON có. "
+            "Không nêu phân loại, vai trò, nhóm thực phẩm, sức khỏe, nguồn hay quy định.\n"
+            "- classification_and_role: chỉ nêu entity thuộc nhóm nào, là một loại của chất/nguyên liệu nào, có chức năng hoặc vai trò gì trong thực phẩm/dinh dưỡng. "
+            "Chỉ viết khi JSON có related.groups, related.parent_ingredients, related.derived_from, related.functions, related.nutrients hoặc field tương đương.\n"
+            "- common_foods: chỉ nêu chất này thường gặp hoặc được phép xuất hiện trong nhóm thực phẩm nào. "
+            "Chỉ viết khi JSON có related.permitted_in, related.food_categories, related.common_foods hoặc field tương đương. Không nêu quy định chi tiết ở đây.\n"
+            "- health_note: chỉ nêu điều cần lưu ý cho sức khỏe khi JSON có dữ liệu về health_claims, health_effects, allergens, warnings, diseases, goals hoặc dữ liệu sức khỏe tương đương. "
+            "Không tự thêm cảnh báo sức khỏe nếu JSON không có dữ liệu.\n"
+            "- source_and_regulation: nêu chung nguồn tham khảo và quy định, bao gồm sources, regulations, evidence, số hiệu, ngày rà soát, trang nguồn, mức dùng tối đa hoặc điều kiện sử dụng nếu JSON có. "
+            "Section này không giải thích lại chức năng, phân loại hay nhóm thực phẩm thường gặp.\n\n"
             "Nếu một section không có dữ liệu riêng đúng mục đích thì bỏ section đó.\n"
             "Output chỉ là JSON object có key `sections`.\n"
             "Mỗi section gồm `section_type` và `content`.\n"
-            "section_type chỉ được là: overview, role_and_usage, common_foods, regulation, consumer_note.\n"
+            "section_type chỉ được là: overview, classification_and_role, common_foods, health_note, source_and_regulation.\n"
             "Không markdown, không bullet nếu không cần.\n\n"
             "Dữ liệu nguồn:\n"
             f"{json.dumps(payload, ensure_ascii=False, indent=2)}"
@@ -173,10 +198,15 @@ def _compact_nodes(nodes: list[dict[str, Any]], limit: int = 12) -> list[dict[st
         "title",
         "code",
         "ins",
+        "e_number",
         "description",
         "function",
         "max_level",
         "unit",
+        "condition",
+        "reviewed_at",
+        "raw_page_number",
+        "raw_record_number",
         "url",
     )
     for node in nodes[:limit]:

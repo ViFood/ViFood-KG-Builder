@@ -31,10 +31,10 @@ class RequiredFieldValidator:
                 errors.append(f"{prefix}.content must not be empty.")
             if section.get("section_type") not in (
                 "overview",
-                "role_and_usage",
+                "classification_and_role",
                 "common_foods",
-                "regulation",
-                "consumer_note",
+                "health_note",
+                "source_and_regulation",
             ):
                 errors.append(f"{prefix}.section_type is not an allowed AI section type.")
         return errors
