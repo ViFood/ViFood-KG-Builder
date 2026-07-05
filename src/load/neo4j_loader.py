@@ -40,6 +40,10 @@ SET profile.title = item.wiki_profile.title,
     profile.source_hash = item.source_hash
 MERGE (entity)-[:HAS_WIKI_PROFILE]->(profile)
 WITH profile, item
+OPTIONAL MATCH (profile)-[oldRel:HAS_SECTION]->(oldSection:WikiSection)
+WHERE NOT oldSection.id IN [sectionData IN item.wiki_sections | sectionData.id]
+DELETE oldRel
+WITH profile, item
 UNWIND item.wiki_sections AS sectionData
 MERGE (section:WikiSection {id: sectionData.id})
 SET section.title = sectionData.title,
@@ -48,9 +52,17 @@ SET section.title = sectionData.title,
     section.status = sectionData.status,
     section.order = sectionData.order,
     section.source_hash = item.source_hash,
-    section.generated_by = coalesce(sectionData.generated_by, 'gemini')
+    section.generated_by = coalesce(sectionData.generated_by, 'template')
 MERGE (profile)-[:HAS_SECTION {order: sectionData.order}]->(section)
 """
+
+ALLOWED_SECTION_TYPES = {
+    "overview",
+    "classification_and_role",
+    "common_foods",
+    "health_note",
+    "source_and_regulation",
+}
 
 
 CACHED_SECTIONS_QUERY = """
@@ -111,5 +123,7 @@ class Neo4jLoader:
         row = rows[0]
         sections = sorted(row.get("wiki_sections") or [], key=lambda item: item.get("order") or 0)
         if not sections:
+            return None
+        if any(section.get("section_type") not in ALLOWED_SECTION_TYPES for section in sections):
             return None
         return {"wiki_profile": row["wiki_profile"], "wiki_sections": sections}

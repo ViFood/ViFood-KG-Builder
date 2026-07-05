@@ -9,7 +9,7 @@ from src.db.neo4j_connection import SourceNeo4jConnection, TargetNeo4jConnection
 from src.extract import AdditiveExtractor, IngredientExtractor, NutrientExtractor
 from src.load.neo4j_loader import Neo4jLoader
 from src.state import ImportRegistry
-from src.transform import AISectionGenerator, SemanticContextBuilder, WikiProfileGenerator
+from src.transform import SemanticContextBuilder, TemplateSectionGenerator, WikiProfileGenerator
 from src.transform.source_hash import compute_source_hash
 from src.validate.wiki_validator import ValidationError, WikiValidator
 
@@ -35,15 +35,17 @@ def main() -> None:
 
     build_parser = subparsers.add_parser("build", help="Build review JSON from source ViFood-KC.")
     build_parser.add_argument("--type", required=True, choices=(*ENTITY_TYPES, "all"))
+    build_parser.add_argument("--input", default=None, help="Read raw extract JSON instead of querying source Neo4j.")
     build_parser.add_argument("--limit", type=int, default=None)
     build_parser.add_argument("--output", default=None)
     build_parser.add_argument("--env-file", default=None)
 
     batch_parser = subparsers.add_parser(
         "batch",
-        help="Extract from source, generate AI wiki sections, validate, and optionally import to target.",
+        help="Extract from source, generate template wiki sections, validate, and optionally import to target.",
     )
     batch_parser.add_argument("--entity-type", "--type", dest="entity_type", required=True, choices=(*ENTITY_TYPES, "all"))
+    batch_parser.add_argument("--input", default=None, help="Read raw extract JSON instead of querying source Neo4j.")
     batch_parser.add_argument("--limit", type=int, default=None)
     batch_parser.add_argument("--output", default=None)
     batch_parser.add_argument("--env-file", default=None)
@@ -98,11 +100,14 @@ def _extract(args: argparse.Namespace) -> None:
 def _build(args: argparse.Namespace) -> None:
     settings = load_settings(args.env_file)
     _assert_separate_neo4j(settings)
-    source = SourceNeo4jConnection(settings.source_neo4j)
-    try:
-        raw_items = _extract_raw(source, args.type, args.limit)
-    finally:
-        source.close()
+    if args.input:
+        raw_items = _read_raw_items(args.input, args.type, args.limit)
+    else:
+        source = SourceNeo4jConnection(settings.source_neo4j)
+        try:
+            raw_items = _extract_raw(source, args.type, args.limit)
+        finally:
+            source.close()
 
     items = _build_items(raw_items, settings)
 
@@ -117,10 +122,14 @@ def _batch(args: argparse.Namespace) -> None:
     settings = load_settings(args.env_file)
     _assert_separate_neo4j(settings)
 
-    source = SourceNeo4jConnection(settings.source_neo4j)
+    source = None
     target = TargetNeo4jConnection(settings.target_neo4j)
     try:
-        raw_items = _extract_raw(source, args.entity_type, None if not args.reprocess_imported else args.limit)
+        if args.input:
+            raw_items = _read_raw_items(args.input, args.entity_type, None)
+        else:
+            source = SourceNeo4jConnection(settings.source_neo4j)
+            raw_items = _extract_raw(source, args.entity_type, None if not args.reprocess_imported else args.limit)
         extracted_count = len(raw_items)
         loader = Neo4jLoader(target)
         registry = ImportRegistry(args.state_file)
@@ -140,6 +149,8 @@ def _batch(args: argparse.Namespace) -> None:
         output = Path(args.output) if args.output else OUTPUT_DIR / f"wiki_{output_type}.json"
         payload = _payload("batch", output_type, items)
         payload["metadata"]["state_file"] = str(registry.path)
+        if args.input:
+            payload["metadata"]["input_file"] = str(args.input)
         payload["metadata"]["extracted_count"] = extracted_count
         payload["metadata"]["skipped_imported_count"] = skipped_imported_count
         payload["metadata"]["selected_count"] = selected_count
@@ -173,7 +184,8 @@ def _batch(args: argparse.Namespace) -> None:
         print(json.dumps(result, ensure_ascii=False, indent=2))
         print(f"Updated import state: {registry.path}")
     finally:
-        source.close()
+        if source is not None:
+            source.close()
         target.close()
 
 
@@ -245,7 +257,7 @@ def _build_items(
 ) -> list[dict[str, Any]]:
     context_builder = SemanticContextBuilder()
     profile_generator = WikiProfileGenerator()
-    section_generator: AISectionGenerator | None = None
+    section_generator = TemplateSectionGenerator()
     items: list[dict[str, Any]] = []
 
     for entity_type, raw_item in raw_items:
@@ -257,13 +269,11 @@ def _build_items(
         if cached:
             wiki_profile = cached["wiki_profile"]
             wiki_sections = cached["wiki_sections"]
-            ai_status = "cached"
+            generation_status = "cached"
         else:
-            if section_generator is None:
-                section_generator = AISectionGenerator(settings.ai)
             wiki_profile = profile_generator.generate(context, source_hash)
             wiki_sections = section_generator.generate(context, source_hash)
-            ai_status = "generated"
+            generation_status = "template"
 
         if not wiki_sections:
             continue
@@ -279,7 +289,7 @@ def _build_items(
                 "facts": context["facts"],
                 "related": context["related"],
                 "evidence": context["evidence"],
-                "ai_status": ai_status,
+                "generation_status": generation_status,
             }
         )
     return items
@@ -292,7 +302,7 @@ def _build_items_until_generation_error(
 ) -> tuple[list[dict[str, Any]], str | None]:
     context_builder = SemanticContextBuilder()
     profile_generator = WikiProfileGenerator()
-    section_generator: AISectionGenerator | None = None
+    section_generator = TemplateSectionGenerator()
     items: list[dict[str, Any]] = []
 
     for entity_type, raw_item in raw_items:
@@ -304,16 +314,11 @@ def _build_items_until_generation_error(
         if cached:
             wiki_profile = cached["wiki_profile"]
             wiki_sections = cached["wiki_sections"]
-            ai_status = "cached"
+            generation_status = "cached"
         else:
-            if section_generator is None:
-                section_generator = AISectionGenerator(settings.ai)
             wiki_profile = profile_generator.generate(context, source_hash)
-            try:
-                wiki_sections = section_generator.generate(context, source_hash)
-            except ValueError as exc:
-                return items, f"{context['entity_id']}: {exc}"
-            ai_status = "generated"
+            wiki_sections = section_generator.generate(context, source_hash)
+            generation_status = "template"
 
         if not wiki_sections:
             continue
@@ -329,7 +334,7 @@ def _build_items_until_generation_error(
                 "facts": context["facts"],
                 "related": context["related"],
                 "evidence": context["evidence"],
-                "ai_status": ai_status,
+                "generation_status": generation_status,
             }
         )
     return items, None
@@ -380,6 +385,33 @@ def _read_items(path: str | Path) -> list[dict[str, Any]]:
     if not isinstance(items, list):
         raise ValueError(f"JSON file must contain an items list: {path}")
     return items
+
+
+def _read_raw_items(
+    path: str | Path,
+    entity_type: str,
+    limit: int | None = None,
+) -> list[tuple[str, dict[str, Any]]]:
+    items = _read_items(path)
+    raw_items: list[tuple[str, dict[str, Any]]] = []
+    for index, item in enumerate(items, start=1):
+        if not isinstance(item, dict):
+            raise ValueError(f"Raw item #{index} must be an object: {path}")
+        item_type = str(item.get("entity_type") or "")
+        if not item_type:
+            raise ValueError(f"Raw item #{index} is missing entity_type: {path}")
+        if entity_type != "all" and item_type != entity_type:
+            continue
+        entity = item.get("entity")
+        relationships = item.get("relationships")
+        if not isinstance(entity, dict) or not isinstance(relationships, dict):
+            raise ValueError(
+                f"Raw item #{index} must contain entity and relationships objects: {path}"
+            )
+        raw_items.append((item_type, {"entity": entity, "relationships": relationships}))
+        if limit is not None and len(raw_items) >= limit:
+            break
+    return raw_items
 
 
 def _json_safe(value: Any) -> Any:

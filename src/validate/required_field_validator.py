@@ -36,5 +36,5 @@ class RequiredFieldValidator:
                 "health_note",
                 "source_and_regulation",
             ):
-                errors.append(f"{prefix}.section_type is not an allowed AI section type.")
+                errors.append(f"{prefix}.section_type is not an allowed section type.")
         return errors

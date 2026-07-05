@@ -1,7 +1,9 @@
-from src.main import _filter_unimported
+import json
+
+from src.main import _filter_unimported, _read_raw_items
 from src.state import ImportRegistry
 from src.transform.semantic_context_builder import SemanticContextBuilder
-from src.transform.ai_section_generator import AISectionGenerator
+from src.transform.template_section_generator import TemplateSectionGenerator
 from src.transform.wiki_profile_generator import WikiProfileGenerator
 from src.transform.source_hash import compute_source_hash
 from src.validate.wiki_validator import WikiValidator
@@ -39,7 +41,7 @@ def test_additive_builds_valid_wiki_item() -> None:
                 "order": 1,
                 "status": "draft",
                 "source_hash": source_hash,
-                "generated_by": "gemini",
+                "generated_by": "template",
             }
         ],
         "facts": context["facts"],
@@ -68,18 +70,6 @@ def test_semantic_context_excludes_internal_metadata_from_facts() -> None:
 
     assert context["facts"] == [{"label": "Mã INS", "value": "100(i)"}]
     assert "ViFood-KC" not in context["summary"]
-
-
-def test_ai_prompt_keeps_section_purposes_separate() -> None:
-    prompt = AISectionGenerator._prompt_text({"entity": {"display_name": "Curcumin"}})
-
-    assert "overview: chỉ giải thích entity là gì" in prompt
-    assert "Không nêu phân loại, vai trò" in prompt
-    assert "classification_and_role: chỉ nêu entity thuộc nhóm nào" in prompt
-    assert "common_foods: chỉ nêu chất này thường gặp" in prompt
-    assert "health_note: chỉ nêu điều cần lưu ý cho sức khỏe" in prompt
-    assert "source_and_regulation: nêu chung nguồn tham khảo" in prompt
-    assert "không gom nhiều loại thông tin" in prompt
 
 
 def test_import_registry_filters_previously_imported_entities(tmp_path) -> None:
@@ -131,3 +121,68 @@ def test_source_hash_is_stable_for_relationship_order() -> None:
     }
 
     assert compute_source_hash(left, "additive") == compute_source_hash(right, "additive")
+
+
+def test_read_raw_items_filters_type_and_limit(tmp_path) -> None:
+    raw_file = tmp_path / "raw_all.json"
+    raw_file.write_text(
+        json.dumps(
+            {
+                "items": [
+                    {
+                        "entity_type": "ingredient",
+                        "entity": {"id": "ingredient:rice"},
+                        "relationships": {},
+                    },
+                    {
+                        "entity_type": "additive",
+                        "entity": {"id": "additive:e330"},
+                        "relationships": {"sources": [{"id": "source:test"}]},
+                    },
+                    {
+                        "entity_type": "additive",
+                        "entity": {"id": "additive:e331"},
+                        "relationships": {},
+                    },
+                ]
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    raw_items = _read_raw_items(raw_file, "additive", limit=1)
+
+    assert raw_items == [
+        (
+            "additive",
+            {
+                "entity": {"id": "additive:e330"},
+                "relationships": {"sources": [{"id": "source:test"}]},
+            },
+        )
+    ]
+
+
+def test_template_section_generator_builds_valid_sections() -> None:
+    raw = {
+        "entity": {
+            "id": "additive:e330",
+            "name_vi": "Acid citric",
+            "name": "Citric acid",
+            "ins": "330",
+        },
+        "relationships": {
+            "functions": [{"name": "Chất điều chỉnh độ acid"}],
+            "permitted_in": [{"name": "Đồ uống"}],
+            "sources": [{"title": "Nguồn kiểm thử"}],
+        },
+    }
+    context = SemanticContextBuilder().build(raw, "additive")
+    source_hash = compute_source_hash(raw, "additive")
+
+    sections = TemplateSectionGenerator().generate(context, source_hash)
+
+    assert sections
+    assert {section["generated_by"] for section in sections} == {"template"}
+    assert "Acid citric" in sections[0]["content"]

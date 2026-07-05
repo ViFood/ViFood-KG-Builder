@@ -12,7 +12,7 @@ Source Neo4j ViFood-KC
 -> Compute source_hash
 -> Skip entity đã import bằng state file
 -> Build semantic context
--> Gemini sinh WikiSection
+-> Template sinh WikiSection từ dữ liệu đã extract
 -> Build WikiProfile
 -> Validate JSON
 -> Import vào Target Neo4j ViFood-KG
@@ -61,12 +61,6 @@ TARGET_NEO4J_URI=bolt://localhost:7688
 TARGET_NEO4J_USER=neo4j
 TARGET_NEO4J_PASSWORD=change_me
 TARGET_NEO4J_DATABASE=neo4j
-
-GEMINI_API_KEY=...
-GEMINI_MODEL=gemini-2.5-flash
-GEMINI_MAX_RETRIES=6
-GEMINI_RETRY_BASE_SECONDS=5
-GEMINI_REQUEST_DELAY_SECONDS=1
 ```
 
 ## CLI
@@ -77,16 +71,28 @@ Extract dữ liệu thô:
 python -m src.main extract --type additive --limit 10
 ```
 
-Build JSON review, chưa import:
+Build JSON review từ Source Neo4j, chưa import:
 
 ```bash
 python -m src.main build --type additive --limit 10
+```
+
+Build JSON review từ file raw đã extract, không query Source Neo4j lại:
+
+```bash
+python -m src.main build --type additive --input data/output/raw_additive.json --limit 10
 ```
 
 Batch generate, validate, import và cập nhật state:
 
 ```bash
 python -m src.main batch --entity-type additive --limit 10
+```
+
+Batch từ file raw đã extract, không query Source Neo4j lại:
+
+```bash
+python -m src.main batch --entity-type additive --input data/output/raw_additive.json --limit 10
 ```
 
 Dry-run:
@@ -123,6 +129,18 @@ python -m src.main batch --entity-type additive --reprocess-imported --force
 
 `--limit` được áp dụng sau khi skip entity đã import. Ví dụ `--limit 10` nghĩa là xử lý tối đa 10 entity chưa import.
 
+## Chạy Nhanh Hơn Với Raw Cache
+
+Nếu Source Neo4j có nhiều node, nên extract một lần rồi build/batch từ file raw local:
+
+```bash
+python -m src.main extract --type additive
+python -m src.main batch --entity-type additive --input data/output/raw_additive.json --limit 20
+python -m src.main batch --entity-type additive --input data/output/raw_additive.json --limit 20
+```
+
+Các lần `batch --input` không query Source Neo4j nữa. Pipeline vẫn đọc `data/state/imported_entities.json` để bỏ qua entity đã import cùng `source_hash`, nên bạn có thể chạy lặp lại theo lô nhỏ.
+
 ## Output
 
 JSON review nằm trong:
@@ -144,15 +162,14 @@ Mỗi item wiki có dạng:
   "facts": [],
   "related": {},
   "evidence": {},
-  "ai_status": "generated"
+  "generation_status": "template"
 }
 ```
 
 ## Lưu Ý
 
-- Gemini chỉ được dùng dữ liệu extract từ Source Neo4j, không tự thêm kiến thức ngoài.
+- Pipeline dùng template generator, không cần dịch vụ sinh nội dung bên ngoài.
 - Nội dung wiki phải trung lập, không kết luận an toàn/nguy hiểm tuyệt đối.
-- Nếu Gemini quota/high demand (`429`, `503`), batch sẽ dừng sớm nhưng vẫn import phần đã generate được.
 - Nếu xoá sạch Target Neo4j, cần xoá state file hoặc chạy với `--reprocess-imported`.
 
 ## Kiểm Tra

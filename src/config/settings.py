@@ -22,20 +22,10 @@ class GraphLabels:
 
 
 @dataclass(frozen=True)
-class AISettings:
-    api_key: str
-    model: str
-    max_retries: int
-    retry_base_seconds: float
-    request_delay_seconds: float
-
-
-@dataclass(frozen=True)
 class AppSettings:
     source_neo4j: Neo4jSettings
     target_neo4j: Neo4jSettings
     labels: GraphLabels
-    ai: AISettings
 
 
 def load_settings(env_file: str | None = None) -> AppSettings:
@@ -60,25 +50,4 @@ def load_settings(env_file: str | None = None) -> AppSettings:
             source=os.getenv("SOURCE_LABEL", "Source"),
             regulation=os.getenv("REGULATION_LABEL", "Regulation"),
         ),
-        ai=AISettings(
-            api_key=os.getenv("GEMINI_API_KEY", ""),
-            model=os.getenv("GEMINI_MODEL", "gemini-2.5-flash"),
-            max_retries=_int_env("GEMINI_MAX_RETRIES", 6),
-            retry_base_seconds=_float_env("GEMINI_RETRY_BASE_SECONDS", 5.0),
-            request_delay_seconds=_float_env("GEMINI_REQUEST_DELAY_SECONDS", 1.0),
-        ),
     )
-
-
-def _int_env(name: str, default: int) -> int:
-    value = os.getenv(name)
-    if value in (None, ""):
-        return default
-    return int(value)
-
-
-def _float_env(name: str, default: float) -> float:
-    value = os.getenv(name)
-    if value in (None, ""):
-        return default
-    return float(value)
