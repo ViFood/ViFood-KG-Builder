@@ -1,6 +1,8 @@
 import json
 
 from src.main import _filter_unimported, _read_raw_items
+from src.extract import AdditiveExtractor, IngredientExtractor, NutrientExtractor
+from src.extract.base import cypher_label
 from src.state import ImportRegistry
 from src.transform.semantic_context_builder import SemanticContextBuilder
 from src.transform.template_section_generator import TemplateSectionGenerator
@@ -186,3 +188,22 @@ def test_template_section_generator_builds_valid_sections() -> None:
     assert sections
     assert {section["generated_by"] for section in sections} == {"template"}
     assert "Acid citric" in sections[0]["content"]
+
+
+def test_extractors_use_configured_entity_labels() -> None:
+    additive = AdditiveExtractor(connection=None, label="FoodAdditive")
+    ingredient = IngredientExtractor(connection=None, label="FoodIngredient")
+    nutrient = NutrientExtractor(connection=None, label="FoodNutrient")
+
+    assert "MATCH (additive:FoodAdditive)" in additive.list_query
+    assert "MATCH (ingredient:FoodIngredient)" in ingredient.list_query
+    assert "MATCH (nutrient:FoodNutrient)" in nutrient.list_query
+
+
+def test_cypher_label_rejects_unsafe_values() -> None:
+    for label in ("", "1Ingredient", "Ingredient) MATCH (n", "Food-Ingredient"):
+        try:
+            cypher_label(label)
+        except ValueError:
+            continue
+        raise AssertionError(f"Expected invalid label to be rejected: {label}")

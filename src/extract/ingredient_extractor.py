@@ -1,4 +1,4 @@
-from src.extract.base import BaseExtractor
+from src.extract.base import BaseExtractor, cypher_label
 
 
 INGREDIENT_RETURN = """
@@ -20,8 +20,11 @@ RETURN ingredient {
 
 
 class IngredientExtractor(BaseExtractor):
-    list_query = f"""
-    MATCH (ingredient:Ingredient)
+    def __init__(self, connection, label: str = "Ingredient") -> None:
+        super().__init__(connection)
+        label = cypher_label(label)
+        self.list_query = f"""
+    MATCH (ingredient:{label})
     OPTIONAL MATCH (ingredient)-[:IN_GROUP]->(ingredientGroup:IngredientGroup)
     OPTIONAL MATCH (ingredient)-[:IS_A]->(parentIngredient:Ingredient)
     OPTIONAL MATCH (ingredient)-[:DERIVED_FROM]->(sourceIngredient:Ingredient)
@@ -34,8 +37,8 @@ class IngredientExtractor(BaseExtractor):
     LIMIT coalesce($limit, 1000000)
     """
 
-    by_id_query = f"""
-    MATCH (ingredient:Ingredient)
+        self.by_id_query = f"""
+    MATCH (ingredient:{label})
     WHERE coalesce(ingredient.id, ingredient.external_code, ingredient.code, elementId(ingredient)) = $entity_id
     OPTIONAL MATCH (ingredient)-[:IN_GROUP]->(ingredientGroup:IngredientGroup)
     OPTIONAL MATCH (ingredient)-[:IS_A]->(parentIngredient:Ingredient)

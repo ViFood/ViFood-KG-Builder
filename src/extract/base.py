@@ -26,3 +26,9 @@ class BaseExtractor:
             "entity": row.get("entity") or {},
             "relationships": row.get("relationships") or {},
         }
+
+
+def cypher_label(label: str) -> str:
+    if not label or not label.replace("_", "").isalnum() or label[0].isdigit():
+        raise ValueError(f"Invalid Neo4j label configured: {label!r}")
+    return label

@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from src.config.settings import AppSettings, Neo4jSettings, load_settings
+from src.config.settings import AppSettings, GraphLabels, Neo4jSettings, load_settings
 from src.db.neo4j_connection import SourceNeo4jConnection, TargetNeo4jConnection
 from src.extract import AdditiveExtractor, IngredientExtractor, NutrientExtractor
 from src.load.neo4j_loader import Neo4jLoader
@@ -85,7 +85,7 @@ def _extract(args: argparse.Namespace) -> None:
     _assert_separate_neo4j(settings)
     source = SourceNeo4jConnection(settings.source_neo4j)
     try:
-        raw_items = _extract_raw(source, args.type, args.limit)
+        raw_items = _extract_raw(source, args.type, args.limit, settings.labels)
     finally:
         source.close()
     items = [
@@ -105,11 +105,11 @@ def _build(args: argparse.Namespace) -> None:
     else:
         source = SourceNeo4jConnection(settings.source_neo4j)
         try:
-            raw_items = _extract_raw(source, args.type, args.limit)
+            raw_items = _extract_raw(source, args.type, args.limit, settings.labels)
         finally:
             source.close()
 
-    items = _build_items(raw_items, settings)
+    items = _build_items(raw_items)
 
     output_type = args.type
     output = Path(args.output) if args.output else OUTPUT_DIR / f"wiki_{output_type}.json"
@@ -129,7 +129,12 @@ def _batch(args: argparse.Namespace) -> None:
             raw_items = _read_raw_items(args.input, args.entity_type, None)
         else:
             source = SourceNeo4jConnection(settings.source_neo4j)
-            raw_items = _extract_raw(source, args.entity_type, None if not args.reprocess_imported else args.limit)
+            raw_items = _extract_raw(
+                source,
+                args.entity_type,
+                None if not args.reprocess_imported else args.limit,
+                settings.labels,
+            )
         extracted_count = len(raw_items)
         loader = Neo4jLoader(target)
         registry = ImportRegistry(args.state_file)
@@ -140,9 +145,8 @@ def _batch(args: argparse.Namespace) -> None:
         else:
             skipped_imported_count = 0
         selected_count = len(raw_items)
-        items, stopped_reason = _build_items_until_generation_error(
+        items = _build_items(
             raw_items,
-            settings,
             loader if not args.force else None,
         )
         output_type = args.entity_type
@@ -154,16 +158,11 @@ def _batch(args: argparse.Namespace) -> None:
         payload["metadata"]["extracted_count"] = extracted_count
         payload["metadata"]["skipped_imported_count"] = skipped_imported_count
         payload["metadata"]["selected_count"] = selected_count
-        if stopped_reason:
-            payload["metadata"]["stopped_early"] = True
-            payload["metadata"]["stopped_reason"] = stopped_reason
         _write_json(output, payload)
 
         if not items:
             print(f"Wrote review JSON: {output}")
             print("Items: 0")
-            if stopped_reason:
-                print(f"Stopped early: {stopped_reason}")
             print("No items to import.")
             return
 
@@ -173,8 +172,6 @@ def _batch(args: argparse.Namespace) -> None:
 
         print(f"Wrote review JSON: {output}")
         print(f"Items: {len(items)}")
-        if stopped_reason:
-            print(f"Stopped early: {stopped_reason}")
         if args.dry_run:
             print("Dry-run: skipped import into target ViFood-KG.")
             return
@@ -215,11 +212,12 @@ def _extract_raw(
     connection: SourceNeo4jConnection,
     entity_type: str,
     limit: int | None,
+    labels: GraphLabels,
 ) -> list[tuple[str, dict[str, Any]]]:
     extractors = {
-        "ingredient": IngredientExtractor(connection),
-        "additive": AdditiveExtractor(connection),
-        "nutrient": NutrientExtractor(connection),
+        "ingredient": IngredientExtractor(connection, labels.ingredient),
+        "additive": AdditiveExtractor(connection, labels.additive),
+        "nutrient": NutrientExtractor(connection, labels.nutrient),
     }
     selected = ENTITY_TYPES if entity_type == "all" else (entity_type,)
     raw_items: list[tuple[str, dict[str, Any]]] = []
@@ -252,7 +250,6 @@ def _raw_entity_id(raw_item: dict[str, Any]) -> str:
 
 def _build_items(
     raw_items: list[tuple[str, dict[str, Any]]],
-    settings: AppSettings,
     target_loader: Neo4jLoader | None = None,
 ) -> list[dict[str, Any]]:
     context_builder = SemanticContextBuilder()
@@ -293,51 +290,6 @@ def _build_items(
             }
         )
     return items
-
-
-def _build_items_until_generation_error(
-    raw_items: list[tuple[str, dict[str, Any]]],
-    settings: AppSettings,
-    target_loader: Neo4jLoader | None = None,
-) -> tuple[list[dict[str, Any]], str | None]:
-    context_builder = SemanticContextBuilder()
-    profile_generator = WikiProfileGenerator()
-    section_generator = TemplateSectionGenerator()
-    items: list[dict[str, Any]] = []
-
-    for entity_type, raw_item in raw_items:
-        context = context_builder.build(raw_item, entity_type)
-        source_hash = compute_source_hash(raw_item, entity_type)
-        profile_id = f"WIKI:{context['entity_id']}"
-
-        cached = target_loader.get_cached_wiki(profile_id, source_hash) if target_loader else None
-        if cached:
-            wiki_profile = cached["wiki_profile"]
-            wiki_sections = cached["wiki_sections"]
-            generation_status = "cached"
-        else:
-            wiki_profile = profile_generator.generate(context, source_hash)
-            wiki_sections = section_generator.generate(context, source_hash)
-            generation_status = "template"
-
-        if not wiki_sections:
-            continue
-
-        items.append(
-            {
-                "entity_id": context["entity_id"],
-                "entity_type": context["entity_type"],
-                "source_hash": source_hash,
-                "source_entity": raw_item.get("entity") or {},
-                "wiki_profile": wiki_profile,
-                "wiki_sections": wiki_sections,
-                "facts": context["facts"],
-                "related": context["related"],
-                "evidence": context["evidence"],
-                "generation_status": generation_status,
-            }
-        )
-    return items, None
 
 
 def _assert_separate_neo4j(settings: AppSettings) -> None:

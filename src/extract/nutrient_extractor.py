@@ -1,4 +1,4 @@
-from src.extract.base import BaseExtractor
+from src.extract.base import BaseExtractor, cypher_label
 
 
 NUTRIENT_RETURN = """
@@ -17,8 +17,11 @@ RETURN nutrient {
 
 
 class NutrientExtractor(BaseExtractor):
-    list_query = f"""
-    MATCH (nutrient:Nutrient)
+    def __init__(self, connection, label: str = "Nutrient") -> None:
+        super().__init__(connection)
+        label = cypher_label(label)
+        self.list_query = f"""
+    MATCH (nutrient:{label})
     OPTIONAL MATCH (nutrient)-[:SUPPORTED_BY]->(source:Source)
     OPTIONAL MATCH (healthClaim:HealthClaim)-[:SUBJECT_OF]->(nutrient)
     OPTIONAL MATCH (ingredient:Ingredient)-[:HAS_NUTRIENT]->(nutrient)
@@ -28,8 +31,8 @@ class NutrientExtractor(BaseExtractor):
     LIMIT coalesce($limit, 1000000)
     """
 
-    by_id_query = f"""
-    MATCH (nutrient:Nutrient)
+        self.by_id_query = f"""
+    MATCH (nutrient:{label})
     WHERE coalesce(nutrient.id, nutrient.external_code, nutrient.code, elementId(nutrient)) = $entity_id
     OPTIONAL MATCH (nutrient)-[:SUPPORTED_BY]->(source:Source)
     OPTIONAL MATCH (healthClaim:HealthClaim)-[:SUBJECT_OF]->(nutrient)

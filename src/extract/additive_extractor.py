@@ -1,4 +1,4 @@
-from src.extract.base import BaseExtractor
+from src.extract.base import BaseExtractor, cypher_label
 
 
 ADDITIVE_RETURN = """
@@ -18,8 +18,11 @@ RETURN additive {
 
 
 class AdditiveExtractor(BaseExtractor):
-    list_query = f"""
-    MATCH (additive:Additive)
+    def __init__(self, connection, label: str = "Additive") -> None:
+        super().__init__(connection)
+        label = cypher_label(label)
+        self.list_query = f"""
+    MATCH (additive:{label})
     OPTIONAL MATCH (additive)-[:HAS_FUNCTION]->(functionalClass:FunctionalClass)
     OPTIONAL MATCH (additive)-[:PERMITTED_IN]->(foodCategory:FoodCategory)
     OPTIONAL MATCH (additive)-[:SUPPORTED_BY]->(source:Source)
@@ -30,8 +33,8 @@ class AdditiveExtractor(BaseExtractor):
     LIMIT coalesce($limit, 1000000)
     """
 
-    by_id_query = f"""
-    MATCH (additive:Additive)
+        self.by_id_query = f"""
+    MATCH (additive:{label})
     WHERE coalesce(additive.id, additive.ins, additive.code, elementId(additive)) = $entity_id
     OPTIONAL MATCH (additive)-[:HAS_FUNCTION]->(functionalClass:FunctionalClass)
     OPTIONAL MATCH (additive)-[:PERMITTED_IN]->(foodCategory:FoodCategory)

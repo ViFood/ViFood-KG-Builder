@@ -61,7 +61,13 @@ TARGET_NEO4J_URI=bolt://localhost:7688
 TARGET_NEO4J_USER=neo4j
 TARGET_NEO4J_PASSWORD=change_me
 TARGET_NEO4J_DATABASE=neo4j
+
+INGREDIENT_LABEL=Ingredient
+ADDITIVE_LABEL=Additive
+NUTRIENT_LABEL=Nutrient
 ```
+
+`INGREDIENT_LABEL`, `ADDITIVE_LABEL` và `NUTRIENT_LABEL` được dùng cho node entity chính khi extract dữ liệu từ Source Neo4j. Các label quan hệ phụ như `Source`, `Regulation`, `FunctionalClass`, `FoodCategory` hiện vẫn theo schema ViFood-KC mặc định.
 
 ## CLI
 
@@ -169,6 +175,7 @@ Mỗi item wiki có dạng:
 ## Lưu Ý
 
 - Pipeline dùng template generator, không cần dịch vụ sinh nội dung bên ngoài.
+- Nội dung wiki sinh ra có `status: draft`; cần review nghiệp vụ trước khi xem là nội dung cuối.
 - Nội dung wiki phải trung lập, không kết luận an toàn/nguy hiểm tuyệt đối.
 - Nếu xoá sạch Target Neo4j, cần xoá state file hoặc chạy với `--reprocess-imported`.
 
