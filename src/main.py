@@ -6,7 +6,7 @@ from typing import Any
 
 from src.config.settings import AppSettings, GraphLabels, Neo4jSettings, load_settings
 from src.db.neo4j_connection import SourceNeo4jConnection, TargetNeo4jConnection
-from src.extract import AdditiveExtractor, IngredientExtractor, NutrientExtractor
+from src.extract import AdditiveExtractor, NutrientExtractor
 from src.load.neo4j_loader import Neo4jLoader
 from src.state import ImportRegistry
 from src.transform import SemanticContextBuilder, TemplateSectionGenerator, WikiProfileGenerator
@@ -17,7 +17,7 @@ from src.validate.wiki_validator import ValidationError, WikiValidator
 OUTPUT_DIR = Path("data/output")
 STATE_DIR = Path("data/state")
 DEFAULT_IMPORT_REGISTRY = STATE_DIR / "imported_entities.json"
-ENTITY_TYPES = ("ingredient", "additive", "nutrient")
+ENTITY_TYPES = ("additive", "nutrient")
 
 
 def main() -> None:
@@ -215,7 +215,6 @@ def _extract_raw(
     labels: GraphLabels,
 ) -> list[tuple[str, dict[str, Any]]]:
     extractors = {
-        "ingredient": IngredientExtractor(connection, labels.ingredient),
         "additive": AdditiveExtractor(connection, labels.additive),
         "nutrient": NutrientExtractor(connection, labels.nutrient),
     }
@@ -354,6 +353,10 @@ def _read_raw_items(
             raise ValueError(f"Raw item #{index} is missing entity_type: {path}")
         if entity_type != "all" and item_type != entity_type:
             continue
+        if item_type not in ENTITY_TYPES:
+            if entity_type == "all":
+                continue
+            raise ValueError(f"Raw item #{index} has unsupported entity_type {item_type!r}: {path}")
         entity = item.get("entity")
         relationships = item.get("relationships")
         if not isinstance(entity, dict) or not isinstance(relationships, dict):

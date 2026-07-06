@@ -42,8 +42,6 @@ class TemplateSectionGenerator:
 
     def _overview(self, context: dict[str, Any]) -> str:
         entity_type = context.get("entity_type")
-        if entity_type == "ingredient":
-            return self._ingredient_overview(context)
         if entity_type == "additive":
             return self._additive_overview(context)
         if entity_type == "nutrient":
@@ -52,8 +50,6 @@ class TemplateSectionGenerator:
 
     def _classification_and_role(self, context: dict[str, Any]) -> str:
         entity_type = context.get("entity_type")
-        if entity_type == "ingredient":
-            return self._ingredient_classification_and_role(context)
         if entity_type == "additive":
             return self._additive_classification_and_role(context)
         if entity_type == "nutrient":
@@ -62,8 +58,6 @@ class TemplateSectionGenerator:
 
     def _common_foods(self, context: dict[str, Any]) -> str:
         entity_type = context.get("entity_type")
-        if entity_type == "ingredient":
-            return self._ingredient_common_foods(context)
         if entity_type == "additive":
             return self._additive_common_foods(context)
         if entity_type == "nutrient":
@@ -72,8 +66,6 @@ class TemplateSectionGenerator:
 
     def _health_note(self, context: dict[str, Any]) -> str:
         entity_type = context.get("entity_type")
-        if entity_type == "ingredient":
-            return self._ingredient_health_note(context)
         if entity_type == "additive":
             return self._additive_health_note(context)
         if entity_type == "nutrient":
@@ -86,18 +78,7 @@ class TemplateSectionGenerator:
             return self._additive_source_and_regulation(context)
         if entity_type == "nutrient":
             return self._nutrient_source_and_regulation(context)
-        if entity_type == "ingredient":
-            return self._ingredient_source_and_regulation(context)
         return self._generic_source_and_regulation(context)
-
-    def _ingredient_overview(self, context: dict[str, Any]) -> str:
-        name = self._display_name(context)
-        parts = [f"{name} là một nguyên liệu hoặc thành phần có thể xuất hiện trong thực phẩm."]
-        parts.extend(self._name_parts(context))
-        summary = self._overview_summary(context)
-        if summary:
-            parts.append(summary)
-        return " ".join(parts)
 
     def _additive_overview(self, context: dict[str, Any]) -> str:
         name = self._display_name(context)
@@ -124,24 +105,6 @@ class TemplateSectionGenerator:
         summary = self._overview_summary(context)
         if summary:
             parts.append(summary)
-        return " ".join(parts)
-
-    def _ingredient_classification_and_role(self, context: dict[str, Any]) -> str:
-        name = self._display_name(context)
-        groups = self._names(context, "groups")
-        parents = self._names(context, "parent_ingredients")
-        derived_from = self._names(context, "derived_from")
-        nutrients = self._names(context, "nutrients", limit=8)
-        parts = []
-
-        if groups:
-            parts.append(f"{name} thuộc hoặc liên quan đến nhóm {self._join(groups)}.")
-        if parents:
-            parts.append(f"Có thể hiểu {name} là một dạng của {self._join(parents)}.")
-        if derived_from:
-            parts.append(f"Nguyên liệu hoặc nguồn gốc liên quan gồm {self._join(derived_from)}.")
-        if nutrients:
-            parts.append(f"Về vai trò dinh dưỡng, {name} có liên quan đến {self._join(nutrients)}.")
         return " ".join(parts)
 
     def _additive_classification_and_role(self, context: dict[str, Any]) -> str:
@@ -182,13 +145,6 @@ class TemplateSectionGenerator:
             parts.append(f"Vai trò được ghi nhận gồm {self._join(functions)}.")
         return " ".join(parts)
 
-    def _ingredient_common_foods(self, context: dict[str, Any]) -> str:
-        name = self._display_name(context)
-        foods = self._food_names(context)
-        if not foods:
-            return ""
-        return f"Người dùng có thể gặp {name} trong các nhóm hoặc loại thực phẩm như {self._join(foods)}."
-
     def _additive_common_foods(self, context: dict[str, Any]) -> str:
         name = self._display_name(context)
         permitted_in = self._names(context, "permitted_in", limit=10)
@@ -214,24 +170,6 @@ class TemplateSectionGenerator:
         if not foods:
             return ""
         return f"{name} liên quan đến các nhóm thực phẩm như {self._join(foods)}."
-
-    def _ingredient_health_note(self, context: dict[str, Any]) -> str:
-        name = self._display_name(context)
-        allergens = self._names(context, "allergens", limit=8)
-        nutrients = self._names(context, "nutrients", limit=8)
-        health_effects = self._names(context, "health_effects", limit=8)
-        warnings = self._names(context, "warnings", limit=8)
-        parts = []
-
-        if allergens:
-            parts.append(f"Người có dị ứng cần chú ý vì {name} có liên quan đến {self._join(allergens)}.")
-        if nutrients:
-            parts.append(f"Về mặt dinh dưỡng, nguyên liệu này có liên quan đến {self._join(nutrients)}.")
-        if health_effects:
-            parts.append(f"Thông tin sức khỏe liên quan gồm {self._join(health_effects)}.")
-        if warnings:
-            parts.append(f"Lưu ý được ghi nhận: {self._join(warnings)}.")
-        return " ".join(parts)
 
     def _additive_health_note(self, context: dict[str, Any]) -> str:
         name = self._display_name(context)
@@ -272,9 +210,6 @@ class TemplateSectionGenerator:
             return ""
         name = self._display_name(context)
         return f"Thông tin sức khỏe liên quan đến {name} gồm {self._join(health_items)}."
-
-    def _ingredient_source_and_regulation(self, context: dict[str, Any]) -> str:
-        return self._source_and_regulation_text(context, mention_regulation=False)
 
     def _additive_source_and_regulation(self, context: dict[str, Any]) -> str:
         return self._source_and_regulation_text(context, mention_regulation=True)

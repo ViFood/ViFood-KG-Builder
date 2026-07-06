@@ -1,7 +1,7 @@
 import json
 
 from src.main import _filter_unimported, _read_raw_items
-from src.extract import AdditiveExtractor, IngredientExtractor, NutrientExtractor
+from src.extract import AdditiveExtractor, NutrientExtractor
 from src.extract.base import cypher_label
 from src.state import ImportRegistry
 from src.transform.semantic_context_builder import SemanticContextBuilder
@@ -132,8 +132,8 @@ def test_read_raw_items_filters_type_and_limit(tmp_path) -> None:
             {
                 "items": [
                     {
-                        "entity_type": "ingredient",
-                        "entity": {"id": "ingredient:rice"},
+                        "entity_type": "legacy_entity",
+                        "entity": {"id": "legacy:rice"},
                         "relationships": {},
                     },
                     {
@@ -165,6 +165,10 @@ def test_read_raw_items_filters_type_and_limit(tmp_path) -> None:
         )
     ]
 
+    all_raw_items = _read_raw_items(raw_file, "all")
+
+    assert [item[0] for item in all_raw_items] == ["additive", "additive"]
+
 
 def test_template_section_generator_builds_valid_sections() -> None:
     raw = {
@@ -192,16 +196,14 @@ def test_template_section_generator_builds_valid_sections() -> None:
 
 def test_extractors_use_configured_entity_labels() -> None:
     additive = AdditiveExtractor(connection=None, label="FoodAdditive")
-    ingredient = IngredientExtractor(connection=None, label="FoodIngredient")
     nutrient = NutrientExtractor(connection=None, label="FoodNutrient")
 
     assert "MATCH (additive:FoodAdditive)" in additive.list_query
-    assert "MATCH (ingredient:FoodIngredient)" in ingredient.list_query
     assert "MATCH (nutrient:FoodNutrient)" in nutrient.list_query
 
 
 def test_cypher_label_rejects_unsafe_values() -> None:
-    for label in ("", "1Ingredient", "Ingredient) MATCH (n", "Food-Ingredient"):
+    for label in ("", "1Additive", "Additive) MATCH (n", "Food-Additive"):
         try:
             cypher_label(label)
         except ValueError:

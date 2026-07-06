@@ -1,14 +1,14 @@
 # ViFood-KG-Builder
 
-`ViFood-KG-Builder` là batch pipeline Python dùng để tạo dữ liệu wiki tri thức cho `ViFood-KG` từ Neo4j nguồn `ViFood-KC`.
+`ViFood-KG-Builder` là batch pipeline Python dùng để tạo dữ liệu wiki tri thức cho phụ gia và chất dinh dưỡng trong `ViFood-KG` từ Neo4j nguồn `ViFood-KC`.
 
-Project này không phải API server. Nó chỉ làm nhiệm vụ đọc dữ liệu nguồn, sinh nội dung wiki, validate, xuất JSON review và import vào Target Neo4j.
+Project này không phải API server. Nó chỉ làm nhiệm vụ đọc dữ liệu nguồn cho `Additive` và `Nutrient`, sinh nội dung wiki, validate, xuất JSON review và import vào Target Neo4j.
 
 ## Pipeline
 
 ```text
 Source Neo4j ViFood-KC
--> Extract Ingredient/Additive/Nutrient + relationships
+-> Extract Additive/Nutrient + relationships
 -> Compute source_hash
 -> Skip entity đã import bằng state file
 -> Build semantic context
@@ -26,7 +26,7 @@ Source và Target là hai Neo4j riêng. Pipeline chỉ đọc Source và chỉ g
 Target Neo4j chỉ thêm lớp wiki:
 
 ```cypher
-(:Ingredient|Additive|Nutrient)-[:HAS_WIKI_PROFILE]->(:WikiProfile)
+(:Additive|Nutrient)-[:HAS_WIKI_PROFILE]->(:WikiProfile)
 (:WikiProfile)-[:HAS_SECTION {order}]->(:WikiSection)
 ```
 
@@ -62,12 +62,11 @@ TARGET_NEO4J_USER=neo4j
 TARGET_NEO4J_PASSWORD=change_me
 TARGET_NEO4J_DATABASE=neo4j
 
-INGREDIENT_LABEL=Ingredient
 ADDITIVE_LABEL=Additive
 NUTRIENT_LABEL=Nutrient
 ```
 
-`INGREDIENT_LABEL`, `ADDITIVE_LABEL` và `NUTRIENT_LABEL` được dùng cho node entity chính khi extract dữ liệu từ Source Neo4j. Các label quan hệ phụ như `Source`, `Regulation`, `FunctionalClass`, `FoodCategory` hiện vẫn theo schema ViFood-KC mặc định.
+`ADDITIVE_LABEL` và `NUTRIENT_LABEL` được dùng cho node entity chính khi extract dữ liệu từ Source Neo4j. Các label quan hệ phụ như `Source`, `Regulation`, `FunctionalClass`, `FoodCategory` hiện vẫn theo schema ViFood-KC mặc định.
 
 ## CLI
 

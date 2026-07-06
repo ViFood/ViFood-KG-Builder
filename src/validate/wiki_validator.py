@@ -50,10 +50,8 @@ class WikiValidator:
                 errors.append(f"{entity_id}: nutrient requires external_code.")
             if not self._has_value(item, "default_unit", "Đơn vị mặc định", facts):
                 errors.append(f"{entity_id}: nutrient requires default_unit.")
-        if entity_type == "ingredient" and not self._has_value(item, "external_code", "Mã ngoài", facts):
-            errors.append(f"{entity_id}: ingredient requires external_code.")
-        if entity_type not in ("ingredient", "additive", "nutrient"):
-            errors.append(f"{entity_id}: entity_type must be ingredient, additive, or nutrient.")
+        if entity_type not in ("additive", "nutrient"):
+            errors.append(f"{entity_id}: entity_type must be additive or nutrient.")
         return errors
 
     @staticmethod

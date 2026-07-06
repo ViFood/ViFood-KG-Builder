@@ -10,12 +10,6 @@ IMPORT_QUERY = """
 UNWIND $items AS item
 CALL {
   WITH item
-  WITH item WHERE item.entity_type = 'ingredient'
-  MERGE (entity:Ingredient {id: item.entity_id})
-  SET entity += coalesce(item.source_entity, {})
-  RETURN entity
-  UNION
-  WITH item
   WITH item WHERE item.entity_type = 'additive'
   MERGE (entity:Additive {id: item.entity_id})
   SET entity += coalesce(item.source_entity, {})
@@ -40,8 +34,7 @@ SET profile.title = item.wiki_profile.title,
     profile.source_hash = item.source_hash
 MERGE (entity)-[:HAS_WIKI_PROFILE]->(profile)
 WITH profile, item
-OPTIONAL MATCH (profile)-[oldRel:HAS_SECTION]->(oldSection:WikiSection)
-WHERE NOT oldSection.id IN [sectionData IN item.wiki_sections | sectionData.id]
+OPTIONAL MATCH (profile)-[oldRel:HAS_SECTION]->(:WikiSection)
 DELETE oldRel
 WITH profile, item
 UNWIND item.wiki_sections AS sectionData

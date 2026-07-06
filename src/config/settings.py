@@ -14,7 +14,6 @@ class Neo4jSettings:
 
 @dataclass(frozen=True)
 class GraphLabels:
-    ingredient: str = "Ingredient"
     additive: str = "Additive"
     nutrient: str = "Nutrient"
     source: str = "Source"
@@ -44,7 +43,6 @@ def load_settings(env_file: str | None = None) -> AppSettings:
             database=os.getenv("TARGET_NEO4J_DATABASE", "neo4j"),
         ),
         labels=GraphLabels(
-            ingredient=os.getenv("INGREDIENT_LABEL", "Ingredient"),
             additive=os.getenv("ADDITIVE_LABEL", "Additive"),
             nutrient=os.getenv("NUTRIENT_LABEL", "Nutrient"),
             source=os.getenv("SOURCE_LABEL", "Source"),

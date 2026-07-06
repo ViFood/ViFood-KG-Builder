@@ -38,10 +38,6 @@ class SemanticContextBuilder:
     def _identifier_text(entity: dict[str, Any], entity_type: str) -> str:
         if entity_type == "additive" and entity.get("ins"):
             return f"INS {entity['ins']}"
-        if entity_type == "ingredient":
-            for key in ("external_code", "chebi_id", "foodon_id"):
-                if entity.get(key):
-                    return str(entity[key])
         if entity_type == "nutrient" and entity.get("external_code"):
             return str(entity["external_code"])
         return str(entity.get("code") or "")
@@ -52,7 +48,6 @@ class SemanticContextBuilder:
             if entity.get(key):
                 return str(entity[key]).strip()
         type_text = {
-            "ingredient": "nguyên liệu hoặc thành phần thực phẩm",
             "additive": "phụ gia thực phẩm",
             "nutrient": "chất dinh dưỡng",
         }.get(entity_type, "thực thể thực phẩm")
@@ -61,7 +56,6 @@ class SemanticContextBuilder:
     @staticmethod
     def _facts(entity: dict[str, Any], entity_type: str) -> list[dict[str, str]]:
         user_facing_fields = {
-            "ingredient": ("external_code", "chebi_id", "foodon_id"),
             "additive": ("ins", "external_code"),
             "nutrient": ("external_code", "default_unit"),
         }
