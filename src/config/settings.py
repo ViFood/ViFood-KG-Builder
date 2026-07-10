@@ -25,6 +25,11 @@ class AppSettings:
     source_neo4j: Neo4jSettings
     target_neo4j: Neo4jSettings
     labels: GraphLabels
+    openai_api_key: str | None
+    model: str | None
+    aws_region: str | None
+    aws_s3_bucket: str | None
+    kie_model_url: str
 
 
 def load_settings(env_file: str | None = None) -> AppSettings:
@@ -48,4 +53,12 @@ def load_settings(env_file: str | None = None) -> AppSettings:
             source=os.getenv("SOURCE_LABEL", "Source"),
             regulation=os.getenv("REGULATION_LABEL", "Regulation"),
         ),
+        openai_api_key=os.getenv("OPENAI_API_KEY"),
+        model=os.getenv("MODEL"),
+        aws_region=(
+            os.getenv("AWS_REGION")
+            or os.getenv("AWS_DEFAULT_REGION")
+        ),
+        aws_s3_bucket=os.getenv("AWS_S3_BUCKET"),
+        kie_model_url=os.getenv("KIE_MODEL_URL", "http://localhost:8001"),
     )
