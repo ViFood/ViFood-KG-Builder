@@ -1,182 +1,111 @@
 # ViFood-KG-Builder
 
-`ViFood-KG-Builder` là batch pipeline Python dùng để tạo dữ liệu wiki tri thức cho phụ gia và chất dinh dưỡng trong `ViFood-KG` từ Neo4j nguồn `ViFood-KC`.
+`ViFood-KG-Builder` là service xây dựng và đồng bộ knowledge graph cho dữ liệu thực phẩm. Project đóng vai trò orchestration layer: nhận ảnh từ S3, gọi `KIE Model API` để trích xuất nhãn, sau đó match/sync `Nutrient` và `Additive` vào Neo4j để trả về kết quả đã được chuẩn hóa.
 
-Project này không phải API server. Nó chỉ làm nhiệm vụ đọc dữ liệu nguồn cho `Additive` và `Nutrient`, sinh nội dung wiki, validate, xuất JSON review và import vào Target Neo4j.
+## Vai Trò
 
-## Pipeline
+- Nhận `s3_key` của ảnh nhãn sản phẩm.
+- Tải ảnh từ AWS S3 và gửi ảnh sang `KIE Model API`.
+- Nhận JSON extraction thô từ AI model.
+- Match/sync `Nutrient` và `Additive` vào Target Neo4j bằng logic chuẩn của hệ thống.
+- Hỗ trợ batch pipeline để replicate dữ liệu `Additive` và `Nutrient` từ Source Neo4j sang Target Neo4j.
+
+## Kiến Trúc Runtime
 
 ```text
-Source Neo4j ViFood-KC
--> Extract Additive/Nutrient + relationships
--> Compute source_hash
--> Skip entity đã import bằng state file
--> Build semantic context
--> Template sinh WikiSection từ dữ liệu đã extract
--> Build WikiProfile
--> Validate JSON
--> Import vào Target Neo4j ViFood-KG
--> Mark imported entity vào state file
+API/App
+-> ViFood-KG-Builder
+-> AWS S3
+-> KIE Model API
+-> Target Neo4j
+-> Final JSON response
 ```
 
-Source và Target là hai Neo4j riêng. Pipeline chỉ đọc Source và chỉ ghi Target.
+Endpoint chính:
 
-## Dữ Liệu Sinh Ra
-
-Target Neo4j chỉ thêm lớp wiki:
-
-```cypher
-(:Additive|Nutrient)-[:HAS_WIKI_PROFILE]->(:WikiProfile)
-(:WikiProfile)-[:HAS_SECTION {order}]->(:WikiSection)
+```http
+POST /labels/analyze
+Content-Type: application/json
 ```
 
-`WikiProfile` là trang wiki tổng thể của entity. `WikiSection` là các mục nội dung bên trong trang.
+```json
+{
+  "s3_key": "users/123/scans/label.jpg"
+}
+```
 
-Các `section_type` hiện dùng:
-
-- `overview`
-- `classification_and_role`
-- `common_foods`
-- `health_note`
-- `source_and_regulation`
-
-## Cấu Hình
+## Cài Đặt
 
 ```bash
+cp .env.example .env
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-cp .env.example .env
 ```
 
-`.env` cần có:
+`.env` cần cấu hình:
 
 ```env
+KIE_MODEL_URL=http://localhost:8001
+
+AWS_ACCESS_KEY_ID=your_aws_access_key_id
+AWS_SECRET_ACCESS_KEY=your_aws_secret_access_key
+AWS_REGION=ap-southeast-1
+AWS_S3_BUCKET=your_bucket_name
+
+OPENAI_API_KEY=your_openai_api_key
+MODEL=gpt-4o-mini
+
 SOURCE_NEO4J_URI=bolt://localhost:7687
 SOURCE_NEO4J_USER=neo4j
 SOURCE_NEO4J_PASSWORD=change_me
-SOURCE_NEO4J_DATABASE=vifood
+SOURCE_NEO4J_DATABASE=neo4j
 
 TARGET_NEO4J_URI=bolt://localhost:7688
 TARGET_NEO4J_USER=neo4j
 TARGET_NEO4J_PASSWORD=change_me
 TARGET_NEO4J_DATABASE=neo4j
-
-ADDITIVE_LABEL=Additive
-NUTRIENT_LABEL=Nutrient
 ```
 
-`ADDITIVE_LABEL` và `NUTRIENT_LABEL` được dùng cho node entity chính khi extract dữ liệu từ Source Neo4j. Các label quan hệ phụ như `Source`, `Regulation`, `FunctionalClass`, `FoodCategory` hiện vẫn theo schema ViFood-KC mặc định.
+## Chạy Local
 
-## CLI
-
-Extract dữ liệu thô:
+Chạy `KIE Model API` trước:
 
 ```bash
-python -m src.main extract --type additive --limit 10
+uvicorn main:app --host 0.0.0.0 --port 8001 --reload
 ```
 
-Build JSON review từ Source Neo4j, chưa import:
+Chạy `ViFood-KG-Builder`:
 
 ```bash
-python -m src.main build --type additive --limit 10
+uvicorn src.app:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-Build JSON review từ file raw đã extract, không query Source Neo4j lại:
-
-```bash
-python -m src.main build --type additive --input data/output/raw_additive.json --limit 10
-```
-
-Batch generate, validate, import và cập nhật state:
-
-```bash
-python -m src.main batch --entity-type additive --limit 10
-```
-
-Batch từ file raw đã extract, không query Source Neo4j lại:
-
-```bash
-python -m src.main batch --entity-type additive --input data/output/raw_additive.json --limit 10
-```
-
-Dry-run:
-
-```bash
-python -m src.main batch --entity-type additive --limit 10 --dry-run
-```
-
-Import JSON có sẵn:
-
-```bash
-python -m src.main import --file data/output/wiki_additive.json
-```
-
-Validate JSON:
-
-```bash
-python -m src.main validate --file data/output/wiki_additive.json
-```
-
-## State File
-
-Pipeline dùng state file để tránh import lại dữ liệu đã xử lý:
+Swagger UI:
 
 ```text
-data/state/imported_entities.json
+http://localhost:8000/docs
 ```
 
-Sau khi import thành công, entity được ghi lại cùng `source_hash`. Lần sau, nếu dữ liệu nguồn không đổi, batch sẽ bỏ qua entity đó. Nếu muốn xử lý lại toàn bộ:
+## Batch Pipeline
+
+Extract dữ liệu từ Source Neo4j:
 
 ```bash
-python -m src.main batch --entity-type additive --reprocess-imported --force
+python -m src.main extract --type all
 ```
 
-`--limit` được áp dụng sau khi skip entity đã import. Ví dụ `--limit 10` nghĩa là xử lý tối đa 10 entity chưa import.
-
-## Chạy Nhanh Hơn Với Raw Cache
-
-Nếu Source Neo4j có nhiều node, nên extract một lần rồi build/batch từ file raw local:
+Build JSON import:
 
 ```bash
-python -m src.main extract --type additive
-python -m src.main batch --entity-type additive --input data/output/raw_additive.json --limit 20
-python -m src.main batch --entity-type additive --input data/output/raw_additive.json --limit 20
+python -m src.main build --type all --input data/output/raw_all.json
 ```
 
-Các lần `batch --input` không query Source Neo4j nữa. Pipeline vẫn đọc `data/state/imported_entities.json` để bỏ qua entity đã import cùng `source_hash`, nên bạn có thể chạy lặp lại theo lô nhỏ.
+Validate và import vào Target Neo4j:
 
-## Output
-
-JSON review nằm trong:
-
-```text
-data/output/
+```bash
+python -m src.main batch --entity-type all --input data/output/raw_all.json
 ```
-
-Mỗi item wiki có dạng:
-
-```json
-{
-  "entity_id": "...",
-  "entity_type": "additive",
-  "source_hash": "...",
-  "source_entity": {},
-  "wiki_profile": {},
-  "wiki_sections": [],
-  "facts": [],
-  "related": {},
-  "evidence": {},
-  "generation_status": "template"
-}
-```
-
-## Lưu Ý
-
-- Pipeline dùng template generator, không cần dịch vụ sinh nội dung bên ngoài.
-- Nội dung wiki sinh ra có `status: draft`; cần review nghiệp vụ trước khi xem là nội dung cuối.
-- Nội dung wiki phải trung lập, không kết luận an toàn/nguy hiểm tuyệt đối.
-- Nếu xoá sạch Target Neo4j, cần xoá state file hoặc chạy với `--reprocess-imported`.
 
 ## Kiểm Tra
 
