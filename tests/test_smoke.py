@@ -1,128 +1,11 @@
 import json
 
-from src.main import _filter_unimported, _read_raw_items
+import pytest
+
 from src.extract import AdditiveExtractor, NutrientExtractor
 from src.extract.base import cypher_label
-from src.state import ImportRegistry
-from src.transform.semantic_context_builder import SemanticContextBuilder
-from src.transform.template_section_generator import TemplateSectionGenerator
-from src.transform.wiki_profile_generator import WikiProfileGenerator
-from src.transform.source_hash import compute_source_hash
-from src.validate.wiki_validator import WikiValidator
-
-
-def test_additive_builds_valid_wiki_item() -> None:
-    raw = {
-        "entity": {
-            "id": "additive:e330",
-            "name_vi": "Acid citric",
-            "name": "Citric acid",
-            "ins": "330",
-            "description": "Acid citric là phụ gia dùng để điều chỉnh độ chua.",
-        },
-        "relationships": {
-            "functions": [{"id": "function:acid", "name": "Chất điều chỉnh độ acid"}],
-            "sources": [{"id": "source:test", "title": "Test source"}],
-            "regulations": [],
-        },
-    }
-    context = SemanticContextBuilder().build(raw, "additive")
-    source_hash = compute_source_hash(raw, "additive")
-    item = {
-        "entity_id": context["entity_id"],
-        "entity_type": context["entity_type"],
-        "source_hash": source_hash,
-        "source_entity": raw["entity"],
-        "wiki_profile": WikiProfileGenerator().generate(context, source_hash),
-        "wiki_sections": [
-            {
-                "id": "WIKI:additive:e330:overview",
-                "title": "Tổng quan",
-                "content": "Acid citric là một phụ gia thực phẩm có mã INS 330.",
-                "section_type": "overview",
-                "order": 1,
-                "status": "draft",
-                "source_hash": source_hash,
-                "generated_by": "template",
-            }
-        ],
-        "facts": context["facts"],
-        "related": context["related"],
-        "evidence": context["evidence"],
-    }
-    errors = WikiValidator().validate_payload({"items": [item]})
-    assert errors == []
-
-
-def test_semantic_context_excludes_internal_metadata_from_facts() -> None:
-    raw = {
-        "entity": {
-            "id": "ADDITIVE:INS_100_I",
-            "name_vi": "Curcumin",
-            "ins": "100(i)",
-            "status": "active",
-            "reviewed_at": "2026-06-23",
-            "created_at": "2026-06-22T13:06:02Z",
-            "updated_at": "2026-06-23T07:26:45Z",
-        },
-        "relationships": {},
-    }
-
-    context = SemanticContextBuilder().build(raw, "additive")
-
-    assert context["facts"] == [{"label": "Mã INS", "value": "100(i)"}]
-    assert "ViFood-KC" not in context["summary"]
-
-
-def test_import_registry_filters_previously_imported_entities(tmp_path) -> None:
-    raw_imported = {
-        "entity": {"id": "ADDITIVE:INS_100_I", "name": "Curcumin", "ins": "100(i)"},
-        "relationships": {"functions": [{"name": "Phẩm màu"}]},
-    }
-    raw_new = {
-        "entity": {"id": "ADDITIVE:INS_100_II", "name": "Turmeric", "ins": "100(ii)"},
-        "relationships": {"functions": [{"name": "Phẩm màu"}]},
-    }
-    imported_hash = compute_source_hash(raw_imported, "additive")
-    registry = ImportRegistry(tmp_path / "imported_entities.json")
-    registry.mark_imported(
-        [
-            {
-                "entity_id": "ADDITIVE:INS_100_I",
-                "entity_type": "additive",
-                "source_hash": imported_hash,
-                "wiki_profile": {"id": "WIKI:ADDITIVE:INS_100_I"},
-                "wiki_sections": [{"section_type": "overview"}],
-            }
-        ]
-    )
-
-    filtered, skipped = _filter_unimported(
-        [("additive", raw_imported), ("additive", raw_new)],
-        registry,
-    )
-
-    assert skipped == 1
-    assert [item[1]["entity"]["id"] for item in filtered] == ["ADDITIVE:INS_100_II"]
-
-
-def test_source_hash_is_stable_for_relationship_order() -> None:
-    left = {
-        "entity": {"id": "ADDITIVE:INS_100_I", "ins": "100(i)"},
-        "relationships": {
-            "functions": [{"id": "f2", "name": "B"}, {"id": "f1", "name": "A"}],
-            "sources": [{"id": "s1"}],
-        },
-    }
-    right = {
-        "entity": {"ins": "100(i)", "id": "ADDITIVE:INS_100_I"},
-        "relationships": {
-            "sources": [{"id": "s1"}],
-            "functions": [{"id": "f1", "name": "A"}, {"id": "f2", "name": "B"}],
-        },
-    }
-
-    assert compute_source_hash(left, "additive") == compute_source_hash(right, "additive")
+from src.load.neo4j_loader import ADDITIVE_IMPORT_QUERY, NUTRIENT_IMPORT_QUERY, Neo4jLoader
+from src.main import _items_from_raw, _read_raw_items
 
 
 def test_read_raw_items_filters_type_and_limit(tmp_path) -> None:
@@ -142,8 +25,8 @@ def test_read_raw_items_filters_type_and_limit(tmp_path) -> None:
                         "relationships": {"sources": [{"id": "source:test"}]},
                     },
                     {
-                        "entity_type": "additive",
-                        "entity": {"id": "additive:e331"},
+                        "entity_type": "nutrient",
+                        "entity": {"id": "nutrient:protein"},
                         "relationships": {},
                     },
                 ]
@@ -167,31 +50,71 @@ def test_read_raw_items_filters_type_and_limit(tmp_path) -> None:
 
     all_raw_items = _read_raw_items(raw_file, "all")
 
-    assert [item[0] for item in all_raw_items] == ["additive", "additive"]
+    assert [item[0] for item in all_raw_items] == ["additive", "nutrient"]
 
 
-def test_template_section_generator_builds_valid_sections() -> None:
-    raw = {
-        "entity": {
-            "id": "additive:e330",
-            "name_vi": "Acid citric",
-            "name": "Citric acid",
-            "ins": "330",
-        },
-        "relationships": {
-            "functions": [{"name": "Chất điều chỉnh độ acid"}],
-            "permitted_in": [{"name": "Đồ uống"}],
-            "sources": [{"title": "Nguồn kiểm thử"}],
-        },
+def test_items_from_raw_preserves_source_payload() -> None:
+    raw_items = [
+        (
+            "additive",
+            {
+                "entity": {"id": "additive:e330", "name": "Citric acid"},
+                "relationships": {"functions": [{"id": "function:acid"}]},
+            },
+        )
+    ]
+
+    assert _items_from_raw(raw_items) == [
+        {
+            "entity_type": "additive",
+            "entity": {"id": "additive:e330", "name": "Citric acid"},
+            "relationships": {"functions": [{"id": "function:acid"}]},
+        }
+    ]
+
+
+def test_loader_validates_raw_import_payload() -> None:
+    payload = {
+        "items": [
+            {
+                "entity_type": "additive",
+                "entity": {"id": "additive:e330", "name": "Citric acid"},
+                "relationships": {},
+            },
+            {
+                "entity_type": "nutrient",
+                "entity": {"id": "nutrient:protein", "name": "Protein"},
+                "relationships": {"sources": [{"id": "source:test"}]},
+            },
+        ]
     }
-    context = SemanticContextBuilder().build(raw, "additive")
-    source_hash = compute_source_hash(raw, "additive")
 
-    sections = TemplateSectionGenerator().generate(context, source_hash)
+    Neo4jLoader.validate_payload(payload)
 
-    assert sections
-    assert {section["generated_by"] for section in sections} == {"template"}
-    assert "Acid citric" in sections[0]["content"]
+
+def test_loader_rejects_wiki_payload() -> None:
+    with pytest.raises(ValueError, match="entity must be an object"):
+        Neo4jLoader.validate_payload(
+            {
+                "items": [
+                    {
+                        "entity_type": "additive",
+                        "entity_id": "additive:e330",
+                        "wiki_profile": {},
+                        "wiki_sections": [],
+                    }
+                ]
+            }
+        )
+
+
+def test_import_queries_do_not_create_wiki_nodes() -> None:
+    combined_query = ADDITIVE_IMPORT_QUERY + NUTRIENT_IMPORT_QUERY
+
+    assert "WikiProfile" not in combined_query
+    assert "WikiSection" not in combined_query
+    assert "HAS_WIKI_PROFILE" not in combined_query
+    assert "HAS_SECTION" not in combined_query
 
 
 def test_extractors_use_configured_entity_labels() -> None:
@@ -204,8 +127,5 @@ def test_extractors_use_configured_entity_labels() -> None:
 
 def test_cypher_label_rejects_unsafe_values() -> None:
     for label in ("", "1Additive", "Additive) MATCH (n", "Food-Additive"):
-        try:
+        with pytest.raises(ValueError):
             cypher_label(label)
-        except ValueError:
-            continue
-        raise AssertionError(f"Expected invalid label to be rejected: {label}")

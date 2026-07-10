@@ -1,14 +1,16 @@
 # ViFood-KG-Builder
 
-`ViFood-KG-Builder` là service xây dựng và đồng bộ knowledge graph cho dữ liệu thực phẩm. Project đóng vai trò orchestration layer: nhận ảnh từ S3, gọi `KIE Model API` để trích xuất nhãn, sau đó match/sync `Nutrient` và `Additive` vào Neo4j để trả về kết quả đã được chuẩn hóa.
+`ViFood-KG-Builder` là service orchestration và knowledge graph layer cho hệ thống phân tích nhãn thực phẩm. Project nhận ảnh từ S3, gọi `KIE Model API` để trích xuất thông tin nhãn, sau đó match/sync `Nutrient` và `Additive` vào Neo4j để tạo kết quả cuối cùng có ngữ cảnh tri thức.
 
-## Vai Trò
+Project được thiết kế để tách rõ AI inference và graph intelligence: model chỉ đọc ảnh, Builder chịu trách nhiệm chuẩn hóa, đối chiếu dữ liệu và đồng bộ knowledge graph. Kiến trúc này giúp hệ thống dễ mở rộng, dễ kiểm soát dữ liệu chuẩn và phù hợp triển khai dạng microservice.
 
-- Nhận `s3_key` của ảnh nhãn sản phẩm.
-- Tải ảnh từ AWS S3 và gửi ảnh sang `KIE Model API`.
-- Nhận JSON extraction thô từ AI model.
-- Match/sync `Nutrient` và `Additive` vào Target Neo4j bằng logic chuẩn của hệ thống.
-- Hỗ trợ batch pipeline để replicate dữ liệu `Additive` và `Nutrient` từ Source Neo4j sang Target Neo4j.
+## Điểm Nổi Bật
+
+- FastAPI runtime API cho luồng xử lý ảnh nhãn theo thời gian thực.
+- Tích hợp AWS S3, KIE Model API và Neo4j trong một orchestration layer.
+- Match/sync `Nutrient` và `Additive` bằng logic chuẩn của hệ thống.
+- Hỗ trợ CLI batch để replicate dữ liệu graph từ Source Neo4j sang Target Neo4j.
+- Giữ AI extraction tách biệt với graph persistence để dễ bảo trì và scale độc lập.
 
 ## Kiến Trúc Runtime
 
@@ -42,8 +44,6 @@ python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 ```
-
-`.env` cần cấu hình:
 
 ```env
 KIE_MODEL_URL=http://localhost:8001
@@ -89,21 +89,9 @@ http://localhost:8000/docs
 
 ## Batch Pipeline
 
-Extract dữ liệu từ Source Neo4j:
-
 ```bash
 python -m src.main extract --type all
-```
-
-Build JSON import:
-
-```bash
 python -m src.main build --type all --input data/output/raw_all.json
-```
-
-Validate và import vào Target Neo4j:
-
-```bash
 python -m src.main batch --entity-type all --input data/output/raw_all.json
 ```
 

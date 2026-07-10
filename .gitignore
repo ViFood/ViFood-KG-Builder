@@ -8,5 +8,3 @@ __pycache__/
 .DS_Store
 data/output/*.json
 !data/output/.gitkeep
-data/state/*.json
-!data/state/.gitkeep

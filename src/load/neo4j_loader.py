@@ -3,120 +3,114 @@ from pathlib import Path
 from typing import Any
 
 from src.db.neo4j_connection import TargetNeo4jConnection
-from src.validate.wiki_validator import WikiValidator
 
 
-IMPORT_QUERY = """
+ADDITIVE_IMPORT_QUERY = """
 UNWIND $items AS item
-CALL {
-  WITH item
-  WITH item WHERE item.entity_type = 'additive'
-  MERGE (entity:Additive {id: item.entity_id})
-  SET entity += coalesce(item.source_entity, {})
-  RETURN entity
-  UNION
-  WITH item
-  WITH item WHERE item.entity_type = 'nutrient'
-  MERGE (entity:Nutrient {id: item.entity_id})
-  SET entity += coalesce(item.source_entity, {})
-  RETURN entity
-}
+MERGE (entity:Additive {id: item.entity.id})
+SET entity += item.entity
 WITH entity, item
-MERGE (profile:WikiProfile {id: item.wiki_profile.id})
-SET profile.title = item.wiki_profile.title,
-    profile.subtitle = item.wiki_profile.subtitle,
-    profile.summary = item.wiki_profile.summary,
-    profile.entity_type = item.wiki_profile.entity_type,
-    profile.language = item.wiki_profile.language,
-    profile.audience = item.wiki_profile.audience,
-    profile.status = item.wiki_profile.status,
-    profile.reviewed_at = item.wiki_profile.reviewed_at,
-    profile.source_hash = item.source_hash
-MERGE (entity)-[:HAS_WIKI_PROFILE]->(profile)
-WITH profile, item
-OPTIONAL MATCH (profile)-[oldRel:HAS_SECTION]->(:WikiSection)
-DELETE oldRel
-WITH profile, item
-UNWIND item.wiki_sections AS sectionData
-MERGE (section:WikiSection {id: sectionData.id})
-SET section.title = sectionData.title,
-    section.content = sectionData.content,
-    section.section_type = sectionData.section_type,
-    section.status = sectionData.status,
-    section.order = sectionData.order,
-    section.source_hash = item.source_hash,
-    section.generated_by = coalesce(sectionData.generated_by, 'template')
-MERGE (profile)-[:HAS_SECTION {order: sectionData.order}]->(section)
+FOREACH (nodeData IN [x IN coalesce(item.relationships.functions, []) WHERE x.id IS NOT NULL] |
+  MERGE (related:FunctionalClass {id: nodeData.id})
+  SET related += nodeData
+  MERGE (entity)-[:HAS_FUNCTION]->(related)
+)
+FOREACH (nodeData IN [x IN coalesce(item.relationships.permitted_in, []) WHERE x.id IS NOT NULL] |
+  MERGE (related:FoodCategory {id: nodeData.id})
+  SET related += nodeData
+  MERGE (entity)-[:PERMITTED_IN]->(related)
+)
+FOREACH (nodeData IN [x IN coalesce(item.relationships.sources, []) WHERE x.id IS NOT NULL] |
+  MERGE (related:Source {id: nodeData.id})
+  SET related += nodeData
+  MERGE (entity)-[:SUPPORTED_BY]->(related)
+)
+FOREACH (nodeData IN [x IN coalesce(item.relationships.aliases, []) WHERE x.id IS NOT NULL] |
+  MERGE (related:Alias {id: nodeData.id})
+  SET related += nodeData
+  MERGE (related)-[:REFERS_TO]->(entity)
+)
+FOREACH (nodeData IN [x IN coalesce(item.relationships.regulations, []) WHERE x.id IS NOT NULL] |
+  MERGE (related:Regulation {id: nodeData.id})
+  SET related += nodeData
+  MERGE (related)-[:GOVERNS]->(entity)
+)
 """
 
-ALLOWED_SECTION_TYPES = {
-    "overview",
-    "classification_and_role",
-    "common_foods",
-    "health_note",
-    "source_and_regulation",
-}
 
-
-CACHED_SECTIONS_QUERY = """
-MATCH (profile:WikiProfile {id: $profile_id})
-WHERE profile.source_hash = $source_hash
-MATCH (profile)-[rel:HAS_SECTION]->(section:WikiSection)
-RETURN profile {
-  .id,
-  .title,
-  .subtitle,
-  .summary,
-  .entity_type,
-  .language,
-  .audience,
-  .status,
-  .reviewed_at,
-  .source_hash
-} AS wiki_profile,
-collect(section {
-  .id,
-  .title,
-  .content,
-  .section_type,
-  order: rel.order,
-  .status,
-  .source_hash,
-  .generated_by
-}) AS wiki_sections
+NUTRIENT_IMPORT_QUERY = """
+UNWIND $items AS item
+MERGE (entity:Nutrient {id: item.entity.id})
+SET entity += item.entity
+WITH entity, item
+FOREACH (nodeData IN [x IN coalesce(item.relationships.sources, []) WHERE x.id IS NOT NULL] |
+  MERGE (related:Source {id: nodeData.id})
+  SET related += nodeData
+  MERGE (entity)-[:SUPPORTED_BY]->(related)
+)
+FOREACH (nodeData IN [x IN coalesce(item.relationships.health_claims, []) WHERE x.id IS NOT NULL] |
+  MERGE (related:HealthClaim {id: nodeData.id})
+  SET related += nodeData
+  MERGE (related)-[:SUBJECT_OF]->(entity)
+)
+FOREACH (nodeData IN [x IN coalesce(item.relationships.ingredients, []) WHERE x.id IS NOT NULL] |
+  MERGE (related:Ingredient {id: nodeData.id})
+  SET related += nodeData
+  MERGE (related)-[:HAS_NUTRIENT]->(entity)
+)
+FOREACH (nodeData IN [x IN coalesce(item.relationships.aliases, []) WHERE x.id IS NOT NULL] |
+  MERGE (related:Alias {id: nodeData.id})
+  SET related += nodeData
+  MERGE (related)-[:REFERS_TO]->(entity)
+)
 """
+
+
+ENTITY_TYPES = ("additive", "nutrient")
 
 
 class Neo4jLoader:
     def __init__(self, connection: TargetNeo4jConnection) -> None:
         self.connection = connection
-        self.validator = WikiValidator()
 
     def import_file(self, path: str | Path) -> dict[str, Any]:
-        self.validator.assert_valid_file(path)
         with Path(path).open("r", encoding="utf-8") as f:
             payload = json.load(f)
         return self.import_payload(payload)
 
     def import_payload(self, payload: dict[str, Any]) -> dict[str, Any]:
-        errors = self.validator.validate_payload(payload)
-        if errors:
-            raise ValueError("\n".join(errors))
+        self.validate_payload(payload)
         items = payload["items"]
-        self.connection.write(IMPORT_QUERY, {"items": items})
-        return {"items_imported": len(items)}
+        additive_items = [item for item in items if item["entity_type"] == "additive"]
+        nutrient_items = [item for item in items if item["entity_type"] == "nutrient"]
 
-    def get_cached_wiki(self, profile_id: str, source_hash: str) -> dict[str, Any] | None:
-        rows = self.connection.read(
-            CACHED_SECTIONS_QUERY,
-            {"profile_id": profile_id, "source_hash": source_hash},
-        )
-        if not rows:
-            return None
-        row = rows[0]
-        sections = sorted(row.get("wiki_sections") or [], key=lambda item: item.get("order") or 0)
-        if not sections:
-            return None
-        if any(section.get("section_type") not in ALLOWED_SECTION_TYPES for section in sections):
-            return None
-        return {"wiki_profile": row["wiki_profile"], "wiki_sections": sections}
+        if additive_items:
+            self.connection.write(ADDITIVE_IMPORT_QUERY, {"items": additive_items})
+        if nutrient_items:
+            self.connection.write(NUTRIENT_IMPORT_QUERY, {"items": nutrient_items})
+
+        return {
+            "items_imported": len(items),
+            "additives_imported": len(additive_items),
+            "nutrients_imported": len(nutrient_items),
+        }
+
+    @staticmethod
+    def validate_payload(payload: Any) -> None:
+        if not isinstance(payload, dict) or not isinstance(payload.get("items"), list):
+            raise ValueError("Root JSON must be an object with an items list.")
+
+        for index, item in enumerate(payload["items"], start=1):
+            if not isinstance(item, dict):
+                raise ValueError(f"Item #{index} must be an object.")
+            entity_type = item.get("entity_type")
+            if entity_type not in ENTITY_TYPES:
+                raise ValueError(f"Item #{index}: entity_type must be additive or nutrient.")
+            entity = item.get("entity")
+            relationships = item.get("relationships")
+            if not isinstance(entity, dict):
+                raise ValueError(f"Item #{index}: entity must be an object.")
+            if not entity.get("id"):
+                raise ValueError(f"Item #{index}: entity.id is required.")
+            if not isinstance(relationships, dict):
+                raise ValueError(f"Item #{index}: relationships must be an object.")
