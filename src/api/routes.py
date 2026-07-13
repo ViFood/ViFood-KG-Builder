@@ -23,11 +23,7 @@ async def analyze_product_label(request: ProductLabelAnalyzeRequest):
             request.s3_key
         )
 
-        return {
-            "success": True,
-            "image_key": request.s3_key,
-            "data": result
-        }
+        return result
 
     except FileNotFoundError as e:
         raise HTTPException(
