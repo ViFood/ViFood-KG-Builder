@@ -18,7 +18,9 @@ class KieModelClient:
             image_bytes
         ).decode("utf-8")
 
-        async with httpx.AsyncClient(timeout=90) as client:
+        async with httpx.AsyncClient(
+            timeout=self.settings.kie_model_timeout_seconds
+        ) as client:
             response = await client.post(
                 f"{self.settings.kie_model_url.rstrip('/')}/extract-label",
                 json={

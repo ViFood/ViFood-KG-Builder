@@ -1,5 +1,6 @@
 from src.load.ingredient_repository import IngredientRepository
 from src.load.ingredient_sync_service import IngredientSyncService
+from src.load.wikidata_ingredient_client import WikidataIngredientClient
 
 
 class FakeIngredientRepository:
@@ -229,3 +230,207 @@ def test_ingredient_graph_payload_follows_spec() -> None:
             "normalized_name": "sweetener",
         }
     ]
+
+
+def test_wikidata_search_query_uses_mwapi_entity_search() -> None:
+    client = WikidataIngredientClient()
+
+    query = client._search_query("gạo")
+
+    assert "SERVICE wikibase:mwapi" in query
+    assert 'wikibase:api "EntitySearch"' in query
+    assert 'BIND("gạo" AS ?searchText)' in query
+    assert "?descriptionVi" in query
+    assert "ORDER BY ASC(?rank)" in query
+    assert f"LIMIT {client.settings.search_limit}" in query
+
+
+def test_wikidata_food_signal_query_checks_candidate_food_context() -> None:
+    client = WikidataIngredientClient()
+
+    query = client._food_signal_query(
+        [
+            "Q34442",
+            "Q11002",
+        ]
+    )
+
+    assert "VALUES ?item { wd:Q34442 wd:Q11002 }" in query
+    assert "foodSignalCount" in query
+    assert f"wd:{client.settings.food_signal_qids[0]}" in query
+    assert "wdt:P31|wdt:P279|wdt:P366" in query
+
+
+def test_wikidata_search_prefers_food_candidate_over_first_ranked_non_food() -> None:
+    client = WikidataIngredientClient()
+
+    candidate = client._select_food_candidate(
+        [
+            {
+                "itemId": {
+                    "value": "Q34442",
+                },
+                "nameVi": {
+                    "value": "đường",
+                },
+                "nameEn": {
+                    "value": "road",
+                },
+                "descriptionVi": {
+                    "value": "lộ trình hoặc đường đi trên bộ",
+                },
+                "descriptionEn": {
+                    "value": "wide way leading from one place to another",
+                },
+                "rank": {
+                    "value": "0",
+                },
+                "foodSignalCount": {
+                    "value": "0",
+                },
+            },
+            {
+                "itemId": {
+                    "value": "Q11002",
+                },
+                "nameVi": {
+                    "value": "đường",
+                },
+                "nameEn": {
+                    "value": "sugar",
+                },
+                "descriptionVi": {
+                    "value": "hợp chất thuộc nhóm cacbohydrat",
+                },
+                "descriptionEn": {
+                    "value": "short-chain carbohydrate",
+                },
+                "rank": {
+                    "value": "3",
+                },
+                "foodSignalCount": {
+                    "value": "3",
+                },
+            },
+        ]
+    )
+
+    assert candidate["itemId"]["value"] == "Q11002"
+
+
+def test_wikidata_search_prefers_exact_food_label_over_broader_rank() -> None:
+    client = WikidataIngredientClient()
+
+    candidate = client._select_food_candidate(
+        [
+            {
+                "itemId": {
+                    "value": "Q115443",
+                },
+                "nameVi": {
+                    "value": "gạo nếp",
+                },
+                "nameEn": {
+                    "value": "glutinous rice",
+                },
+                "rank": {
+                    "value": "0",
+                },
+                "foodSignalCount": {
+                    "value": "2",
+                },
+            },
+            {
+                "itemId": {
+                    "value": "Q5090",
+                },
+                "nameVi": {
+                    "value": "gạo",
+                },
+                "nameEn": {
+                    "value": "rice",
+                },
+                "rank": {
+                    "value": "1",
+                },
+                "foodSignalCount": {
+                    "value": "1",
+                },
+            },
+        ],
+        "gạo",
+    )
+
+    assert candidate["itemId"]["value"] == "Q5090"
+
+
+def test_wikidata_detail_parser_reads_aggregated_detail_shape() -> None:
+    client = WikidataIngredientClient()
+
+    detail = client._parse_detail(
+        "Q4739805",
+        [
+            {
+                "nameVi": {
+                    "value": "sơ ri",
+                },
+                "nameEn": {
+                    "value": "acerola",
+                },
+                "descriptionVi": {
+                    "value": "loài thực vật",
+                },
+                "descriptionEn": {
+                    "value": "plant species",
+                },
+                "aliasesVi": {
+                    "value": '["kim đồng nam"]',
+                },
+                "aliasesEn": {
+                    "value": '["Barbados cherry"]',
+                },
+                "categories": {
+                    "value": '[{"id":"Q756","labelVi":"thực vật","labelEn":"plant"}]',
+                },
+                "uses": {
+                    "value": '[{"id":"Q2095","labelVi":"","labelEn":"food"}]',
+                },
+                "wikipediaVi": {
+                    "value": "https://vi.wikipedia.org/wiki/S%C6%A1_ri",
+                },
+                "wikipediaEn": {
+                    "value": "https://en.wikipedia.org/wiki/Malpighia_emarginata",
+                },
+            }
+        ],
+    )
+
+    assert detail["wikidata_id"] == "Q4739805"
+    assert detail["name_vi"] == "sơ ri"
+    assert detail["name_en"] == "acerola"
+    assert detail["description_vi"] == "loài thực vật"
+    assert detail["description_en"] == "plant species"
+    assert detail["aliases"] == [
+        {
+            "name": "kim đồng nam",
+            "language": "vi",
+        },
+        {
+            "name": "Barbados cherry",
+            "language": "en",
+        },
+    ]
+    assert detail["categories"] == [
+        {
+            "wikidata_id": "Q756",
+            "name": "thực vật",
+        }
+    ]
+    assert detail["usages"] == [
+        {
+            "wikidata_id": "Q2095",
+            "name": "food",
+        }
+    ]
+    assert detail["wikipedia_vi_url"] == "https://vi.wikipedia.org/wiki/S%C6%A1_ri"
+    assert detail["wikipedia_en_url"] == "https://en.wikipedia.org/wiki/Malpighia_emarginata"

@@ -4,12 +4,14 @@ import re
 import unicodedata
 from typing import Any
 
+from src.config.settings import load_settings
 from src.load.runtime_neo4j_service import Neo4jService
 
 
 class IngredientRepository:
     def __init__(self, neo4j_service: Neo4jService | None = None):
         self.neo4j_service = neo4j_service or Neo4jService()
+        self.wikidata_settings = load_settings().wikidata
 
     @property
     def is_configured(self) -> bool:
@@ -92,9 +94,9 @@ class IngredientRepository:
                 "wikipedia_en_url": detail.get("wikipedia_en_url"),
             },
             "source": {
-                "id": "SOURCE:WIKIDATA",
-                "name": "Wikidata",
-                "source_url": "https://www.wikidata.org/",
+                "id": self.wikidata_settings.source_id,
+                "name": self.wikidata_settings.source_name,
+                "source_url": self.wikidata_settings.source_url,
             },
             "aliases": self._build_aliases(wikidata_id, ingredient, detail),
             "categories": self._build_categories(detail),

@@ -92,7 +92,10 @@ additive từ nhãn
 ingredient từ nhãn
   -> match graph trước
   -> nếu đã có: dùng node có sẵn
-  -> nếu chưa có: resolve Wikidata QID
+  -> nếu chưa có: resolve Wikidata QID trong ngữ cảnh thành phần thực phẩm
+  -> lấy candidate bằng Wikidata mwapi search
+  -> annotate candidate bằng food signal
+  -> chọn theo food signal / exact label / rank
   -> lấy detail bằng QID
   -> tạo Ingredient / Alias / Usage / Source / relationships
 ```
@@ -179,6 +182,20 @@ python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 ```
+
+## Cấu Hình Chính
+
+Các giá trị runtime nằm trong `.env`. `.env.example` liệt kê đầy đủ các nhóm chính:
+
+- Neo4j source/target: `SOURCE_NEO4J_*`, `TARGET_NEO4J_*`
+- KG contract: `KG_CONTRACT_PATH`, `KG_CONTRACT_VERSION`
+- Graph labels: `INGREDIENT_LABEL`, `ADDITIVE_LABEL`, `NUTRIENT_LABEL`, `SOURCE_LABEL`, `REGULATION_LABEL`
+- KIE model: `KIE_MODEL_URL`, `KIE_MODEL_TIMEOUT_SECONDS`
+- Wikidata Ingredient flow: `WIKIDATA_*`
+- OpenAI nutrient fallback: `OPENAI_API_KEY`, `MODEL`
+- S3 image input: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION`, `AWS_S3_BUCKET`
+
+Wikidata search dùng `WIKIDATA_SEARCH_LANGUAGE`, `WIKIDATA_SEARCH_LIMIT`, `WIKIDATA_FOOD_SIGNAL_QIDS` để chọn đúng candidate trong ngữ cảnh thực phẩm, ví dụ tránh chọn `đường` theo nghĩa `road`.
 
 ## Chạy Local
 
