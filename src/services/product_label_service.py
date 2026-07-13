@@ -1,4 +1,5 @@
 from src.load.additive_sync_service import AdditiveSyncService
+from src.load.ingredient_sync_service import IngredientSyncService
 from src.load.nutrient_sync_service import NutrientSyncService
 from src.services.final_label_response_mapper import FinalLabelResponseMapper
 from src.services.kie_model_client import KieModelClient
@@ -11,6 +12,7 @@ class ProductLabelService:
         self.kie_model_client = KieModelClient()
         self.nutrient_sync_service = NutrientSyncService()
         self.additive_sync_service = AdditiveSyncService()
+        self.ingredient_sync_service = IngredientSyncService()
         self.final_label_response_mapper = FinalLabelResponseMapper()
 
     async def analyze_from_s3(self, s3_key: str) -> dict:
@@ -31,9 +33,13 @@ class ProductLabelService:
             raw_extraction
         )
 
+        ingredient_sync = self.ingredient_sync_service.sync_from_extraction(
+            raw_extraction
+        )
+
         return self.final_label_response_mapper.build(
             raw_extraction=raw_extraction,
             nutrient_results=nutrient_sync,
             additive_results=additive_sync,
-            ingredient_results=[],
+            ingredient_results=ingredient_sync,
         )
