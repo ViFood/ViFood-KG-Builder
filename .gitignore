@@ -9,6 +9,34 @@ __pycache__/
 data/output/*.json
 !data/output/.gitkeep
 
+# Local generated/runtime artifacts
+data/input/
+data/raw/
+data/cache/
+data/local/
+data/private/
+data/scratch/
+data/runtime/
+data/extractions/
+data/output/**
+!data/output/.gitkeep
+*.response.json
+*.extraction.json
+*.runtime.json
+*.generated.json
+*.cache.json
+*.log
+data/**/*.jpg
+data/**/*.jpeg
+data/**/*.png
+data/**/*.webp
+data/**/*.heic
+data/**/*.heif
+data/**/*.mp4
+data/**/*.mov
+data/**/*.m4a
+data/**/*.wav
+
 # Local Spec Kit / agent workflow artifacts
 .specify/
 .agents/
