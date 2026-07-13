@@ -8,3 +8,10 @@ __pycache__/
 .DS_Store
 data/output/*.json
 !data/output/.gitkeep
+
+# Local Spec Kit / agent workflow artifacts
+.specify/
+.agents/
+specs/
+AGENTS.md
+RTK.md
