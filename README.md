@@ -10,7 +10,7 @@ Builder chịu trách nhiệm:
 
 - Nhận input phân tích nhãn qua API hoặc fixture local.
 - Gọi KIE Model API để lấy extraction result từ ảnh.
-- Tách extraction thành ba nhóm: `nutrition`, `additive`, `ingredients`.
+- Tách extraction thành ba nhóm: `nutritions`, `additives`, `ingredients`.
 - Match hoặc tạo dữ liệu graph theo flow riêng của từng nhóm.
 - Build payload graph nội bộ để validate/import Neo4j.
 - Trả `FinalLabelResponse` cho app, chỉ gồm thông tin có trên nhãn.
@@ -46,7 +46,7 @@ Contract cho Builder biết:
 ```text
 Ảnh nhãn hoặc fixture extraction
   -> KIE extraction
-  -> normalize thành nutrition / additive / ingredients
+  -> normalize thành nutritions / additives / ingredients
   -> Nutrient flow
   -> Additive flow
   -> Ingredient flow
@@ -61,7 +61,7 @@ Contract cho Builder biết:
 `Nutrient` là catalog-first.
 
 ```text
-nutrition từ nhãn
+nutritions từ nhãn
   -> normalize NutrientInput
   -> match canonical Nutrient trong KG trước
   -> ưu tiên external_code / INFOODS tagname
@@ -75,7 +75,7 @@ nutrition từ nhãn
 `Additive` là catalog-first.
 
 ```text
-additive từ nhãn
+additives từ nhãn
   -> parse/normalize INS hoặc E-code
   -> match canonical Additive trong KG trước
   -> ưu tiên INS / E-code
@@ -89,7 +89,7 @@ additive từ nhãn
 `Ingredient` không có catalog nền từ `ViFood-KG`. Builder xử lý theo hướng graph-first.
 
 ```text
-ingredient từ nhãn
+ingredients từ nhãn
   -> match graph trước
   -> nếu đã có: dùng node có sẵn
   -> nếu chưa có: resolve Wikidata QID trong ngữ cảnh thành phần thực phẩm
@@ -117,7 +117,7 @@ Ví dụ:
   "product_name": "Sữa đậu nành ABC",
   "brand": "ABC",
   "serving_size": "180 ml",
-  "nutrition": {
+  "nutritions": {
     "energy": 120,
     "protein": {
       "id": "NUTRIENT:INFOODS_PROCNT",
@@ -133,7 +133,7 @@ Ví dụ:
       "percentage": 96
     }
   ],
-  "additive": [
+  "additives": [
     {
       "id": "ADDITIVE:INS_330",
       "name": "Citric acid",
@@ -149,8 +149,8 @@ Các field public chính:
 product_name
 age_range
 ingredients
-additive
-nutrition
+additives
+nutritions
 manufacturer
 mfg_date
 expiry_date

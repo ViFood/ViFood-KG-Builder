@@ -16,7 +16,8 @@ class NutrientSyncService:
 
     def sync_from_extraction(self, extraction_result: dict) -> list[dict]:
         nutrients = self._normalize_nutrients(
-            extraction_result.get("nutrition")
+            extraction_result.get("nutritions")
+            or extraction_result.get("nutrition")
         )
 
         if not nutrients:

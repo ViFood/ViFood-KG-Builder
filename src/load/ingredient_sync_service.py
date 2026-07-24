@@ -85,6 +85,7 @@ class IngredientSyncService:
             value = (
                 item.get("name")
                 or item.get("label")
+                or item.get("ingredients")
                 or item.get("ingredient")
             )
         else:

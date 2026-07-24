@@ -25,8 +25,8 @@ class FinalLabelResponse(BaseModel):
     product_name: str | None = None
     age_range: str | None = None
     ingredients: list[PublicLabelEntity] = Field(default_factory=list)
-    additive: list[PublicLabelEntity] = Field(default_factory=list)
-    nutrition: dict[str, Any] = Field(default_factory=dict)
+    additives: list[PublicLabelEntity] = Field(default_factory=list)
+    nutritions: dict[str, Any] = Field(default_factory=dict)
     manufacturer: str | None = None
     mfg_date: str | None = None
     expiry_date: str | None = None

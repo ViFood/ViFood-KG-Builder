@@ -143,8 +143,8 @@ def test_final_label_response_preserves_visible_label_fields_only() -> None:
                 {"name": "Victoria pineapple", "percentage": 96},
                 {"name": "acerola cherry", "percentage": 4},
             ],
-            "additive": [],
-            "nutrition": {
+            "additives": [],
+            "nutritions": {
                 "energy": "120",
                 "protein": "1g",
                 "empty": "",
@@ -191,14 +191,16 @@ def test_final_label_response_preserves_visible_label_fields_only() -> None:
             "percentage": 96,
         }
     ]
-    assert response["nutrition"]["protein"] == {
+    assert response["nutritions"]["protein"] == {
         "id": "NUTRIENT:INFOODS_PROCNT",
         "name": "Protein",
         "value": "1",
         "unit": "g",
     }
-    assert response["nutrition"]["energy"] == "120"
+    assert response["nutritions"]["energy"] == "120"
+    assert "additives" not in response
     assert "additive" not in response
+    assert "nutrition" not in response
     assert "age_range" not in response
     assert "manufacturer" not in response
     assert "kg_contract_version" not in response

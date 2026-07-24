@@ -9,7 +9,8 @@ class AdditiveSyncService:
 
     def sync_from_extraction(self, extraction_result: dict) -> list[dict]:
         additives = self._normalize_additives(
-            extraction_result.get("additive")
+            extraction_result.get("additives")
+            or extraction_result.get("additive")
         )
 
         if not additives:
@@ -51,6 +52,7 @@ class AdditiveSyncService:
             name = str(
                 item.get("name")
                 or item.get("label")
+                or item.get("additives")
                 or item.get("additive")
                 or ""
             ).strip()

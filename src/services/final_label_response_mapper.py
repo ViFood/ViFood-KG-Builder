@@ -41,6 +41,7 @@ GROUP_FIELDS = {
     "additive",
     "additives",
     "nutrition",
+    "nutritions",
     "nutrients",
 }
 
@@ -63,7 +64,7 @@ class FinalLabelResponseMapper:
 
         nutrition = self._build_nutrition(raw_extraction, nutrient_results or [])
         if nutrition:
-            response_data["nutrition"] = nutrition
+            response_data["nutritions"] = nutrition
 
         ingredients = self._build_entities(ingredient_results or [])
         if not ingredients:
@@ -77,11 +78,11 @@ class FinalLabelResponseMapper:
         additives = self._build_entities(additive_results or [])
         if not additives:
             additives = self._build_raw_entities(
-                raw_extraction.get("additive")
-                or raw_extraction.get("additives")
+                raw_extraction.get("additives")
+                or raw_extraction.get("additive")
             )
         if additives:
-            response_data["additive"] = additives
+            response_data["additives"] = additives
 
         return FinalLabelResponse(**response_data).model_dump(
             exclude_none=True,
@@ -94,7 +95,10 @@ class FinalLabelResponseMapper:
         raw_extraction: dict[str, Any],
         nutrient_results: list[dict[str, Any]],
     ) -> dict[str, Any]:
-        raw_nutrition = raw_extraction.get("nutrition")
+        raw_nutrition = (
+            raw_extraction.get("nutritions")
+            or raw_extraction.get("nutrition")
+        )
         nutrition: dict[str, Any] = {}
 
         if isinstance(raw_nutrition, dict):
@@ -197,7 +201,9 @@ class FinalLabelResponseMapper:
                 item.get("name")
                 or item.get("label")
                 or item.get("ingredient")
+                or item.get("ingredients")
                 or item.get("additive")
+                or item.get("additives")
             )
             if not name:
                 return None
