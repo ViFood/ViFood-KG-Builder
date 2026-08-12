@@ -202,13 +202,13 @@ Wikidata search dùng `WIKIDATA_SEARCH_LANGUAGE`, `WIKIDATA_SEARCH_LIMIT`, `WIKI
 Chạy Builder:
 
 ```bash
-uvicorn src.app:app --host 0.0.0.0 --port 8000 --reload
+uvicorn src.app:app --host 0.0.0.0 --port 8002 --reload
 ```
 
 Swagger UI:
 
 ```text
-http://localhost:8000/docs
+http://localhost:8002/docs
 ```
 
 ## CLI Hiện Có
