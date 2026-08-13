@@ -51,8 +51,6 @@ class AppSettings:
     wikidata: WikidataSettings
     openai_api_key: str | None
     model: str | None
-    aws_region: str | None
-    aws_s3_bucket: str | None
     kie_model_url: str
     kie_model_timeout_seconds: int
 
@@ -119,11 +117,6 @@ def load_settings(env_file: str | None = None) -> AppSettings:
         ),
         openai_api_key=os.getenv("OPENAI_API_KEY"),
         model=os.getenv("MODEL"),
-        aws_region=(
-            os.getenv("AWS_REGION")
-            or os.getenv("AWS_DEFAULT_REGION")
-        ),
-        aws_s3_bucket=os.getenv("AWS_S3_BUCKET"),
         kie_model_url=os.getenv("KIE_MODEL_URL", "http://localhost:8001"),
         kie_model_timeout_seconds=_env_int("KIE_MODEL_TIMEOUT_SECONDS", 90),
     )

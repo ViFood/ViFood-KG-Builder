@@ -12,7 +12,8 @@ class KieModelClient:
     async def extract_label(
         self,
         image_bytes: bytes,
-        content_type: str
+        content_type: str,
+        request_id: str,
     ) -> dict:
         image_base64 = base64.b64encode(
             image_bytes
@@ -24,6 +25,7 @@ class KieModelClient:
             response = await client.post(
                 f"{self.settings.kie_model_url.rstrip('/')}/extract-label",
                 json={
+                    "request_id": request_id,
                     "image_base64": image_base64,
                     "content_type": content_type
                 },
@@ -31,4 +33,14 @@ class KieModelClient:
             response.raise_for_status()
 
         payload = response.json()
-        return payload.get("data", payload)
+        if not isinstance(payload, dict):
+            raise ValueError("AIaaS returned invalid response")
+
+        if payload.get("success") is False:
+            raise ValueError("AIaaS extraction failed")
+
+        data = payload.get("data", payload)
+        if not isinstance(data, dict):
+            raise ValueError("AIaaS returned invalid data")
+
+        return data

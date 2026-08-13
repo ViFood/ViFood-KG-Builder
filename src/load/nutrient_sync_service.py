@@ -2,8 +2,6 @@ import json
 import re
 import unicodedata
 
-from openai import OpenAI
-
 from src.config.settings import load_settings
 from src.load.runtime_neo4j_service import Neo4jService
 from src.prompts.nutrient_duplicate_check import NUTRIENT_DUPLICATE_CHECK_PROMPT
@@ -50,6 +48,11 @@ class NutrientSyncService:
         prompt = NUTRIENT_DUPLICATE_CHECK_PROMPT.strip()
 
         if not prompt or not self.settings.model:
+            return nutrient
+
+        try:
+            from openai import OpenAI
+        except ImportError:
             return nutrient
 
         response = OpenAI().chat.completions.create(

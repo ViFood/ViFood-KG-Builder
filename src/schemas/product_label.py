@@ -1,10 +1,28 @@
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class ProductLabelAnalyzeRequest(BaseModel):
-    s3_key: str
+    request_id: str
+    image_base64: str
+    content_type: str
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("request_id", "image_base64", "content_type")
+    @classmethod
+    def require_non_empty_string(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("field must not be empty")
+        return value
+
+    @field_validator("content_type")
+    @classmethod
+    def require_image_content_type(cls, value: str) -> str:
+        if not value.startswith("image/"):
+            raise ValueError("content_type must be an image MIME type")
+        return value
 
 
 class PublicLabelEntity(BaseModel):

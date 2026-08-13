@@ -1,6 +1,6 @@
 # ViFood-KG-Builder
 
-`ViFood-KG-Builder` là service runtime cho hệ thống phân tích nhãn thực phẩm. Project nhận ảnh nhãn từ S3 hoặc fixture extraction local, gọi KIE Model API để đọc nhãn, chuẩn hóa dữ liệu trích xuất, liên kết dữ liệu với knowledge graph, rồi trả về JSON cuối cùng cho app.
+`ViFood-KG-Builder` là service runtime cho hệ thống phân tích nhãn thực phẩm. Project nhận ảnh nhãn từ `ViFood-API` qua payload ảnh, gọi KIE Model API để đọc nhãn, chuẩn hóa dữ liệu trích xuất, liên kết dữ liệu với knowledge graph, rồi trả JSON phân tích public về cho Backend API.
 
 Builder không phải project tạo tri thức chuẩn. Tri thức chuẩn nằm ở `ViFood-KC`. Builder đọc KG Builder Contract do `ViFood-KC` publish để biết schema, release IDs và match keys cần dùng khi xử lý runtime.
 
@@ -8,12 +8,12 @@ Builder không phải project tạo tri thức chuẩn. Tri thức chuẩn nằm
 
 Builder chịu trách nhiệm:
 
-- Nhận input phân tích nhãn qua API hoặc fixture local.
+- Nhận input phân tích nhãn qua API nội bộ từ `ViFood-API`.
 - Gọi KIE Model API để lấy extraction result từ ảnh.
 - Tách extraction thành ba nhóm: `nutritions`, `additives`, `ingredients`.
 - Match hoặc tạo dữ liệu graph theo flow riêng của từng nhóm.
 - Build payload graph nội bộ để validate/import Neo4j.
-- Trả `FinalLabelResponse` cho app, chỉ gồm thông tin có trên nhãn.
+- Trả `FinalLabelResponse` cho Backend API, chỉ gồm thông tin public cần cho app.
 
 Builder không chịu trách nhiệm:
 
@@ -21,6 +21,8 @@ Builder không chịu trách nhiệm:
 - Chạy quality gate canonical của `ViFood-KG`.
 - Publish KG Builder Contract.
 - Đưa metadata kỹ thuật, provenance hoặc source detail vào response cuối cùng cho app.
+- Đọc ảnh từ S3/storage trong flow runtime chuẩn.
+- Quản lý user/session/history hoặc lưu ảnh sau phân tích.
 
 ## Quan Hệ Với ViFood-KC
 
@@ -44,16 +46,16 @@ Contract cho Builder biết:
 ## Flow Tổng
 
 ```text
-Ảnh nhãn hoặc fixture extraction
-  -> KIE extraction
+Ảnh nhãn từ ViFood-API
+  -> validate request
+  -> KIE extraction qua LLM-KIE 2
   -> normalize thành nutritions / additives / ingredients
   -> Nutrient flow
   -> Additive flow
   -> Ingredient flow
-  -> build internal GraphPayload
-  -> validate
-  -> dry-run hoặc import Neo4j
-  -> trả FinalLabelResponse
+  -> Neo4j/KG contract
+  -> build FinalLabelResponse public
+  -> trả về ViFood-API
 ```
 
 ## Flow Nutrient
@@ -106,9 +108,9 @@ Ingredient mới dùng ID dạng:
 INGREDIENT:{WIKIDATA_QID}
 ```
 
-## Output Cuối Cùng Cho App
+## Output Cuối Cùng Cho Backend API
 
-Response public cuối cùng chỉ chứa thông tin có trên nhãn và danh sách entity đã được liên kết graph. Không trả metadata kỹ thuật, contract version, release IDs, provenance, source nodes, Wikidata detail, status hoặc errors nội bộ.
+Response public cuối cùng chỉ chứa thông tin có trên nhãn và danh sách entity đã được liên kết graph. Backend API sẽ bổ sung `analysis_id`, `image_ref`, lưu S3 và lưu history sau khi Builder trả success. Builder không trả metadata kỹ thuật, contract version, release IDs, provenance, source nodes, Wikidata detail, status hoặc errors nội bộ.
 
 Ví dụ:
 
@@ -170,9 +172,16 @@ Content-Type: application/json
 
 ```json
 {
-  "s3_key": "users/123/scans/label.jpg"
+  "request_id": "analysis_20260813_0001",
+  "image_base64": "...",
+  "content_type": "image/jpeg",
+  "metadata": {
+    "source": "vifood-api"
+  }
 }
 ```
+
+Builder không chấp nhận request chỉ có `s3_key`, `image_ref` hoặc storage key.
 
 ## Cài Đặt
 
@@ -193,7 +202,6 @@ Các giá trị runtime nằm trong `.env`. `.env.example` liệt kê đầy đ�
 - KIE model: `KIE_MODEL_URL`, `KIE_MODEL_TIMEOUT_SECONDS`
 - Wikidata Ingredient flow: `WIKIDATA_*`
 - OpenAI nutrient fallback: `OPENAI_API_KEY`, `MODEL`
-- S3 image input: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION`, `AWS_S3_BUCKET`
 
 Wikidata search dùng `WIKIDATA_SEARCH_LANGUAGE`, `WIKIDATA_SEARCH_LIMIT`, `WIKIDATA_FOOD_SIGNAL_QIDS` để chọn đúng candidate trong ngữ cảnh thực phẩm, ví dụ tránh chọn `đường` theo nghĩa `road`.
 

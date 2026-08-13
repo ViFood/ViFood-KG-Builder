@@ -1,5 +1,6 @@
 import httpx
 from fastapi import APIRouter, HTTPException
+from pydantic import ValidationError
 
 from src.schemas.product_label import ProductLabelAnalyzeRequest
 from src.services.product_label_service import ProductLabelService
@@ -19,26 +20,40 @@ async def root():
 @router.post("/labels/analyze")
 async def analyze_product_label(request: ProductLabelAnalyzeRequest):
     try:
-        result = await product_label_service.analyze_from_s3(
-            request.s3_key
+        result = await product_label_service.analyze_from_payload(
+            request_id=request.request_id,
+            image_base64=request.image_base64,
+            content_type=request.content_type,
         )
 
         return result
 
-    except FileNotFoundError as e:
-        raise HTTPException(
-            status_code=404,
-            detail=str(e)
-        )
-
-    except (ValueError, httpx.HTTPStatusError) as e:
+    except ValueError as exc:
         raise HTTPException(
             status_code=400,
-            detail=str(e)
-        )
+            detail=str(exc),
+        ) from exc
 
-    except Exception as e:
+    except httpx.HTTPStatusError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail="AIaaS extract-label request failed",
+        ) from exc
+
+    except httpx.RequestError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail="Cannot connect to AIaaS extract-label service",
+        ) from exc
+
+    except ValidationError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail="Builder produced invalid analysis response",
+        ) from exc
+
+    except Exception as exc:
         raise HTTPException(
             status_code=500,
-            detail=str(e)
-        )
+            detail="Builder analyze request failed",
+        ) from exc
