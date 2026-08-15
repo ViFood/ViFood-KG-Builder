@@ -57,10 +57,35 @@ class IngredientRepository:
             self._sync_from_payload_tx,
             payload,
         )
+        return self._build_sync_result(
+            ingredient=ingredient,
+            detail=detail,
+            ingredient_id=synced["id"],
+            status="created",
+        )
+
+    def _build_sync_result(
+        self,
+        *,
+        ingredient: dict[str, Any],
+        detail: dict[str, Any],
+        ingredient_id: str,
+        status: str,
+    ) -> dict[str, Any]:
         return {
-            "id": synced["id"],
+            "id": ingredient_id,
             "name": ingredient["name"],
-            "status": "created",
+            "status": status,
+            "wikidata_id": detail.get("wikidata_id"),
+            "name_vi": detail.get("name_vi"),
+            "name_en": detail.get("name_en"),
+            "description_vi": detail.get("description_vi"),
+            "description_en": detail.get("description_en"),
+            "wikipedia_vi_url": detail.get("wikipedia_vi_url"),
+            "wikipedia_en_url": detail.get("wikipedia_en_url"),
+            "aliases": detail.get("aliases", []),
+            "categories": detail.get("categories", []),
+            "usages": detail.get("usages", []),
         }
 
     def build_graph_payload(
@@ -241,8 +266,13 @@ class IngredientRepository:
                OR toLower(coalesce(n.name, "")) = $lower_name
                OR toLower(coalesce(n.name_vi, "")) = $lower_name
                OR toLower(coalesce(n.name_en, "")) = $lower_name
-            RETURN n.id AS id,
-                   elementId(n) AS element_id
+            OPTIONAL MATCH (n)<-[:REFERS_TO]-(alias:Alias)
+            OPTIONAL MATCH (n)-[:BELONGS_TO]->(category:Ingredient)
+            OPTIONAL MATCH (n)-[:HAS_USAGE]->(usage:Usage)
+            RETURN n,
+                   collect(DISTINCT alias) AS aliases,
+                   collect(DISTINCT category) AS categories,
+                   collect(DISTINCT usage) AS usages
             LIMIT 1
             """,
             normalized_name=normalized_name,
@@ -255,8 +285,13 @@ class IngredientRepository:
                 MATCH (a:Alias)-[:REFERS_TO]->(n:Ingredient)
                 WHERE a.normalized_name = $normalized_name
                    OR toLower(coalesce(a.name, "")) = $lower_name
-                RETURN n.id AS id,
-                       elementId(n) AS element_id
+                OPTIONAL MATCH (n)<-[:REFERS_TO]-(alias:Alias)
+                OPTIONAL MATCH (n)-[:BELONGS_TO]->(category:Ingredient)
+                OPTIONAL MATCH (n)-[:HAS_USAGE]->(usage:Usage)
+                RETURN n,
+                       collect(DISTINCT alias) AS aliases,
+                       collect(DISTINCT category) AS categories,
+                       collect(DISTINCT usage) AS usages
                 LIMIT 1
                 """,
                 normalized_name=normalized_name,
@@ -266,10 +301,42 @@ class IngredientRepository:
         if not match:
             return None
 
+        node = match["n"]
         return {
-            "id": match["id"] or match["element_id"],
+            "id": node.get("id") or node.element_id,
             "name": name,
             "status": "matched",
+            "wikidata_id": node.get("wikidata_id"),
+            "name_vi": node.get("name_vi"),
+            "name_en": node.get("name_en"),
+            "description_vi": node.get("description_vi"),
+            "description_en": node.get("description_en"),
+            "wikipedia_vi_url": node.get("wikipedia_vi_url"),
+            "wikipedia_en_url": node.get("wikipedia_en_url"),
+            "aliases": [
+                {
+                    "name": alias.get("name"),
+                    "language": alias.get("language"),
+                }
+                for alias in match.get("aliases", [])
+                if alias and alias.get("name")
+            ],
+            "categories": [
+                {
+                    "wikidata_id": category.get("wikidata_id"),
+                    "name": category.get("name"),
+                }
+                for category in match.get("categories", [])
+                if category and category.get("name")
+            ],
+            "usages": [
+                {
+                    "wikidata_id": usage.get("wikidata_id"),
+                    "name": usage.get("name"),
+                }
+                for usage in match.get("usages", [])
+                if usage and usage.get("name")
+            ],
         }
 
     @staticmethod

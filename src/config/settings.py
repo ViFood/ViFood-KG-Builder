@@ -95,7 +95,7 @@ def load_settings(env_file: str | None = None) -> AppSettings:
             source_url=os.getenv("WIKIDATA_SOURCE_URL", "https://www.wikidata.org/"),
             user_agent=os.getenv(
                 "WIKIDATA_USER_AGENT",
-                "ViFood-KG-Builder/1.0",
+                "ViFood-KG-Builder/1.0 (https://github.com/ViFood/NutriQuor; educational research)",
             ),
             search_language=os.getenv("WIKIDATA_SEARCH_LANGUAGE", "vi"),
             search_limit=_env_int("WIKIDATA_SEARCH_LIMIT", 10),

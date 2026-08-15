@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 import httpx
+from neo4j.exceptions import DriverError, Neo4jError
 
 from src.load.ingredient_repository import IngredientRepository
 from src.load.wikidata_ingredient_client import WikidataIngredientClient
@@ -27,7 +28,7 @@ class IngredientSyncService:
             return []
 
         if not self.repository.is_configured:
-            return ingredients
+            return []
 
         return [
             self._sync_ingredient(ingredient)
@@ -35,7 +36,11 @@ class IngredientSyncService:
         ]
 
     def _sync_ingredient(self, ingredient: dict[str, Any]) -> dict[str, Any]:
-        existing = self.repository.match_existing(ingredient)
+        try:
+            existing = self.repository.match_existing(ingredient)
+        except (DriverError, Neo4jError):
+            existing = None
+
         if existing:
             return existing
 
@@ -50,7 +55,7 @@ class IngredientSyncService:
 
             detail["wikidata_id"] = detail.get("wikidata_id") or qid
             return self.repository.sync_from_detail(ingredient, detail)
-        except (httpx.HTTPError, ValueError):
+        except (DriverError, httpx.HTTPError, Neo4jError, ValueError):
             return self._unresolved(ingredient)
 
     def _normalize_ingredients(self, ingredients: Any) -> list[dict[str, Any]]:

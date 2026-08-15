@@ -174,6 +174,8 @@ def test_final_label_response_preserves_visible_label_fields_only() -> None:
             {
                 "id": "INGREDIENT:Q123",
                 "name": "Victoria pineapple",
+                "wikidata_id": "Q123",
+                "description_en": "pineapple cultivar",
                 "percentage": 96,
             }
         ],
@@ -188,6 +190,8 @@ def test_final_label_response_preserves_visible_label_fields_only() -> None:
         {
             "id": "INGREDIENT:Q123",
             "name": "Victoria pineapple",
+            "wikidata_id": "Q123",
+            "description_en": "pineapple cultivar",
             "percentage": 96,
         }
     ]
@@ -207,3 +211,34 @@ def test_final_label_response_preserves_visible_label_fields_only() -> None:
     assert "matched_against_releases" not in response
     assert "source_ref" not in response
     assert "metadata" not in response
+
+
+def test_final_label_response_omits_ingredients_without_wikidata_detail() -> None:
+    mapper = FinalLabelResponseMapper()
+
+    response = mapper.build(
+        raw_extraction={
+            "product_name": "Sua ABC",
+            "ingredients": [
+                {
+                    "name": "unknown ingredient",
+                }
+            ],
+        },
+        ingredient_results=[
+            {
+                "id": None,
+                "name": "unknown ingredient",
+                "status": "unresolved",
+            },
+            {
+                "id": "INGREDIENT:LOCAL",
+                "name": "local ingredient",
+                "status": "matched",
+            },
+        ],
+    )
+
+    assert response == {
+        "product_name": "Sua ABC",
+    }

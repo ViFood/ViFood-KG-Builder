@@ -105,11 +105,6 @@ def test_product_label_service_decodes_payload_and_uses_request_id() -> None:
 
     assert result == {
         "product_name": "Sua ABC",
-        "ingredients": [
-            {
-                "name": "sua",
-            }
-        ],
     }
     assert FakeKieModelClient.last_request == {
         "image_bytes": b"image-bytes",

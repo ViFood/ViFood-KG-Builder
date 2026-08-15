@@ -66,12 +66,7 @@ class FinalLabelResponseMapper:
         if nutrition:
             response_data["nutritions"] = nutrition
 
-        ingredients = self._build_entities(ingredient_results or [])
-        if not ingredients:
-            ingredients = self._build_raw_entities(
-                raw_extraction.get("ingredients")
-                or raw_extraction.get("ingredient")
-            )
+        ingredients = self._build_ingredient_entities(ingredient_results or [])
         if ingredients:
             response_data["ingredients"] = ingredients
 
@@ -169,6 +164,41 @@ class FinalLabelResponseMapper:
 
         return entities
 
+    def _build_ingredient_entities(
+        self,
+        results: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        return self._build_entities(
+            [
+                result
+                for result in results
+                if self._has_wikidata_ingredient_detail(result)
+            ]
+        )
+
+    def _has_wikidata_ingredient_detail(self, result: dict[str, Any]) -> bool:
+        if not isinstance(result, dict):
+            return False
+
+        if result.get("status") == "unresolved":
+            return False
+
+        if not result.get("id") or not result.get("wikidata_id"):
+            return False
+
+        return any(
+            self._is_present(result.get(key))
+            for key in (
+                "description_vi",
+                "description_en",
+                "wikipedia_vi_url",
+                "wikipedia_en_url",
+                "aliases",
+                "categories",
+                "usages",
+            )
+        )
+
     def _build_raw_entities(self, raw_value: Any) -> list[dict[str, Any]]:
         raw_items = raw_value if isinstance(raw_value, list) else [raw_value]
         entities: list[dict[str, Any]] = []
@@ -231,6 +261,16 @@ class FinalLabelResponseMapper:
             percentage=result.get("percentage"),
             daily_value_percent=result.get("daily_value_percent"),
             ins=result.get("ins"),
+            wikidata_id=result.get("wikidata_id"),
+            name_vi=result.get("name_vi"),
+            name_en=result.get("name_en"),
+            description_vi=result.get("description_vi"),
+            description_en=result.get("description_en"),
+            wikipedia_vi_url=result.get("wikipedia_vi_url"),
+            wikipedia_en_url=result.get("wikipedia_en_url"),
+            aliases=result.get("aliases"),
+            categories=result.get("categories"),
+            usages=result.get("usages"),
         )
 
     def _set_if_present(self, target: dict[str, Any], key: str, value: Any) -> None:

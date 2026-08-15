@@ -1,24 +1,37 @@
 from src.load.ingredient_repository import IngredientRepository
 from src.load.ingredient_sync_service import IngredientSyncService
 from src.load.wikidata_ingredient_client import WikidataIngredientClient
+from neo4j.exceptions import ServiceUnavailable
 
 
 class FakeIngredientRepository:
-    def __init__(self, existing=None):
+    def __init__(self, existing=None, fail_match=False, fail_sync=False):
         self.is_configured = True
         self.existing = existing
+        self.fail_match = fail_match
+        self.fail_sync = fail_sync
         self.created = []
 
     def match_existing(self, ingredient):
+        if self.fail_match:
+            raise ServiceUnavailable("neo4j read unavailable")
         return self.existing
 
     def sync_from_detail(self, ingredient, detail):
+        if self.fail_sync:
+            raise ServiceUnavailable("neo4j write unavailable")
         self.created.append((ingredient, detail))
         return {
             "id": f"INGREDIENT:{detail['wikidata_id']}",
             "name": ingredient["name"],
             "status": "created",
         }
+
+
+class FakeUnconfiguredIngredientRepository(FakeIngredientRepository):
+    def __init__(self):
+        super().__init__()
+        self.is_configured = False
 
 
 class FakeWikidataClient:
@@ -121,6 +134,82 @@ def test_ingredient_sync_creates_missing_ingredient_from_wikidata_detail() -> No
         "name": "sugar",
         "normalized_name": "sugar",
     }
+
+
+def test_ingredient_sync_returns_empty_when_repository_is_unconfigured() -> None:
+    repository = FakeUnconfiguredIngredientRepository()
+    wikidata = FakeWikidataClient()
+    service = IngredientSyncService(repository=repository, wikidata_client=wikidata)
+
+    result = service.sync_from_extraction(
+        {
+            "ingredients": [
+                "sugar",
+            ]
+        }
+    )
+
+    assert result == []
+    assert wikidata.search_calls == []
+    assert wikidata.detail_calls == []
+
+
+def test_ingredient_sync_uses_wikidata_when_neo4j_match_fails() -> None:
+    detail = {
+        "wikidata_id": "Q11002",
+        "name_vi": "đường",
+        "name_en": "sugar",
+    }
+    repository = FakeIngredientRepository(fail_match=True)
+    wikidata = FakeWikidataClient(qid="Q11002", detail=detail)
+    service = IngredientSyncService(repository=repository, wikidata_client=wikidata)
+
+    result = service.sync_from_extraction(
+        {
+            "ingredients": [
+                "sugar",
+            ]
+        }
+    )
+
+    assert result == [
+        {
+            "id": "INGREDIENT:Q11002",
+            "name": "sugar",
+            "status": "created",
+        }
+    ]
+    assert wikidata.search_calls == ["sugar"]
+    assert wikidata.detail_calls == ["Q11002"]
+
+
+def test_ingredient_sync_returns_unresolved_when_neo4j_write_fails() -> None:
+    detail = {
+        "wikidata_id": "Q11002",
+        "name_vi": "đường",
+        "name_en": "sugar",
+    }
+    repository = FakeIngredientRepository(fail_sync=True)
+    wikidata = FakeWikidataClient(qid="Q11002", detail=detail)
+    service = IngredientSyncService(repository=repository, wikidata_client=wikidata)
+
+    result = service.sync_from_extraction(
+        {
+            "ingredients": [
+                "sugar",
+            ]
+        }
+    )
+
+    assert result == [
+        {
+            "id": None,
+            "name": "sugar",
+            "status": "unresolved",
+        }
+    ]
+    assert wikidata.search_calls == ["sugar"]
+    assert wikidata.detail_calls == ["Q11002"]
 
 
 def test_ingredient_sync_returns_unresolved_without_qid() -> None:
