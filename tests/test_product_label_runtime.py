@@ -142,6 +142,7 @@ def test_kie_model_client_sends_request_id(monkeypatch) -> None:
             }
 
     class FakeAsyncClient:
+        last_get = None
         last_post = None
 
         def __init__(self, timeout: int):
@@ -152,6 +153,12 @@ def test_kie_model_client_sends_request_id(monkeypatch) -> None:
 
         async def __aexit__(self, exc_type, exc, tb):
             return None
+
+        async def get(self, url: str):
+            FakeAsyncClient.last_get = {
+                "url": url,
+            }
+            return FakeResponse()
 
         async def post(self, url: str, json: dict):
             FakeAsyncClient.last_post = {
@@ -176,6 +183,9 @@ def test_kie_model_client_sends_request_id(monkeypatch) -> None:
 
     assert result == {
         "product_name": "Sua ABC",
+    }
+    assert FakeAsyncClient.last_get == {
+        "url": "http://localhost:8001/health",
     }
     assert FakeAsyncClient.last_post["json"] == {
         "request_id": "analysis-1",

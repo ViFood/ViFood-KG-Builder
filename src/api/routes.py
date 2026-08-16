@@ -37,13 +37,13 @@ async def analyze_product_label(request: ProductLabelAnalyzeRequest):
     except httpx.HTTPStatusError as exc:
         raise HTTPException(
             status_code=502,
-            detail="AIaaS extract-label request failed",
+            detail="AIaaS request failed",
         ) from exc
 
     except httpx.RequestError as exc:
         raise HTTPException(
             status_code=502,
-            detail="Cannot connect to AIaaS extract-label service",
+            detail="Cannot connect to AIaaS service",
         ) from exc
 
     except ValidationError as exc:

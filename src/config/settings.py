@@ -52,7 +52,9 @@ class AppSettings:
     openai_api_key: str | None
     model: str | None
     kie_model_url: str
+    kie_model_health_url: str
     kie_model_timeout_seconds: int
+    kie_model_health_timeout_seconds: int
 
 
 def load_settings(env_file: str | None = None) -> AppSettings:
@@ -118,7 +120,15 @@ def load_settings(env_file: str | None = None) -> AppSettings:
         openai_api_key=os.getenv("OPENAI_API_KEY"),
         model=os.getenv("MODEL"),
         kie_model_url=os.getenv("KIE_MODEL_URL", "http://localhost:8001"),
+        kie_model_health_url=os.getenv(
+            "KIE_MODEL_HEALTH_URL",
+            f"{os.getenv('KIE_MODEL_URL', 'http://localhost:8001').rstrip('/')}/health",
+        ),
         kie_model_timeout_seconds=_env_int("KIE_MODEL_TIMEOUT_SECONDS", 90),
+        kie_model_health_timeout_seconds=_env_int(
+            "KIE_MODEL_HEALTH_TIMEOUT_SECONDS",
+            10,
+        ),
     )
 
 
