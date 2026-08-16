@@ -1,0 +1,16 @@
+.DS_Store
+.env
+.git
+.pytest_cache
+.venv
+__pycache__
+*.py[cod]
+*.pyo
+*.pyd
+*.log
+.agents
+.specify
+RTK.md
+tests
+specs
+data/output

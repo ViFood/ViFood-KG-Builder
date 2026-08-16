@@ -1,0 +1,32 @@
+services:
+  vifood-kg-builder:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ${BUILDER_IMAGE:-vifood-kg-builder:local}
+    container_name: vifood-kg-builder
+    env_file:
+      - .env
+    environment:
+      KIE_MODEL_URL: ${KIE_MODEL_URL_DOCKER:-http://host.docker.internal:8001}
+      KIE_MODEL_HEALTH_URL: ${KIE_MODEL_HEALTH_URL_DOCKER:-http://host.docker.internal:8001/health}
+      KG_CONTRACT_PATH: ${KG_CONTRACT_PATH_DOCKER:-/contracts/kg_schema_contract.json}
+    ports:
+      - "${BUILDER_PORT:-8002}:8002"
+    volumes:
+      - ${KG_CONTRACT_HOST_PATH:?Set KG_CONTRACT_HOST_PATH to the KG contract JSON file}:/contracts/kg_schema_contract.json:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8002/', timeout=5)",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
